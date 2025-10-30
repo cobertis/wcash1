@@ -2,7 +2,7 @@ import { storage } from '../storage';
 import { walgreensAPI } from './walgreens';
 import { db } from '../db';
 import { scanFiles, scanQueue } from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { RateLimiterManager } from './rate-limiter-manager';
 import type { 
   ApiKeyPool, 
@@ -50,6 +50,9 @@ export class ScannerService {
 
   // Progress update interval
   private progressUpdateInterval?: NodeJS.Timeout;
+  
+  // Watchdog timer for automatic recovery of stuck numbers
+  private recoveryWatchdogInterval?: NodeJS.Timeout;
   
   // WebSocket clients for real-time updates
   private wsClients: Set<any> = new Set();
@@ -121,6 +124,9 @@ export class ScannerService {
     
     console.log('✅ Recovery complete - all stuck items reset before workers start');
     
+    // Start automatic recovery watchdog (runs every 2 minutes)
+    this.startRecoveryWatchdog();
+    
     // Check for active session
     const activeSession = await storage.getActiveScanSession();
     if (activeSession) {
@@ -143,6 +149,62 @@ export class ScannerService {
   }
 
   /**
+   * Start automatic recovery watchdog
+   * Runs every 2 minutes to detect and reset stuck numbers
+   */
+  private startRecoveryWatchdog(): void {
+    // Clear any existing watchdog
+    if (this.recoveryWatchdogInterval) {
+      clearInterval(this.recoveryWatchdogInterval);
+    }
+    
+    console.log('🐕 Starting automatic recovery watchdog (checks every 2 minutes)');
+    
+    // Run recovery check every 2 minutes (120000ms)
+    this.recoveryWatchdogInterval = setInterval(async () => {
+      await this.recoverStuckNumbers();
+    }, 120000);
+  }
+
+  /**
+   * Stop automatic recovery watchdog
+   */
+  private stopRecoveryWatchdog(): void {
+    if (this.recoveryWatchdogInterval) {
+      clearInterval(this.recoveryWatchdogInterval);
+      this.recoveryWatchdogInterval = undefined;
+      console.log('🐕 Stopped automatic recovery watchdog');
+    }
+  }
+
+  /**
+   * Recover stuck numbers - automatically reset numbers that have been
+   * in 'processing' state for more than 5 minutes
+   */
+  private async recoverStuckNumbers(): Promise<void> {
+    try {
+      // Find numbers stuck in 'processing' for more than 5 minutes
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      
+      const stuckNumbers = await db.execute(sql`
+        UPDATE ${scanQueue}
+        SET status = 'pending', processed_at = NULL
+        WHERE status = 'processing' 
+          AND processed_at < ${fiveMinutesAgo}
+        RETURNING phone_number
+      `);
+      
+      const resetCount = stuckNumbers.rows.length;
+      
+      if (resetCount > 0) {
+        console.log(`🔧 WATCHDOG: Auto-recovered ${resetCount} stuck numbers (in 'processing' > 5 min)`);
+      }
+    } catch (error) {
+      console.error('❌ Recovery watchdog error:', error);
+    }
+  }
+
+  /**
    * Start scanning
    */
   async start(): Promise<void> {
@@ -155,6 +217,20 @@ export class ScannerService {
     
     // Initialize abort controller for clean stop
     this.abortController = new AbortController();
+    
+    // 🔧 RESET STUCK NUMBERS BEFORE STARTING (prevent blocking)
+    // This ensures any numbers stuck in 'processing' from previous aborted scans are reset
+    const stuckQueueNumbers = await db.update(scanQueue)
+      .set({ 
+        status: 'pending',
+        scannedAt: null
+      })
+      .where(eq(scanQueue.status, 'processing'))
+      .returning();
+    
+    if (stuckQueueNumbers.length > 0) {
+      console.log(`♻️ Reset ${stuckQueueNumbers.length} stuck numbers before starting scanner`);
+    }
     
     // Load/reload API keys and initialize RateLimiterManager
     this.apiKeys = await storage.getAllApiKeys();
