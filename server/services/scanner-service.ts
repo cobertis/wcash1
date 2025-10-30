@@ -379,7 +379,9 @@ export class ScannerService {
       try {
         // Get BATCH of numbers for this worker (reduces database calls)
         const BATCH_SIZE = 50; // Process 50 numbers before going back to DB
+        console.log(`🔍 Worker ${workerIndex} (${apiKeyConfig.name}): Fetching ${BATCH_SIZE} numbers from queue...`);
         const pendingNumbers = await storage.getNextPendingNumbers(BATCH_SIZE);
+        console.log(`📥 Worker ${workerIndex} (${apiKeyConfig.name}): Received ${pendingNumbers.length} numbers from queue`);
         
         if (pendingNumbers.length === 0) {
           // No more numbers to process
