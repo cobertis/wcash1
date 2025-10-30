@@ -1,5 +1,13 @@
 import { type Member, type Offer, type ClippedOffer, type RedeemedOffer } from "@shared/schema";
 import { RateLimiterManager } from './rate-limiter-manager';
+import { Agent } from 'https';
+
+// Agent to bind requests to specific outbound IP
+const httpsAgent = new Agent({ 
+  localAddress: '5.161.27.53',
+  keepAlive: true,
+  keepAliveMsecs: 30000
+});
 
 interface WalgreensAPIConfig {
   apiKey: string;
@@ -401,6 +409,7 @@ class WalgreensAPIService {
             'Referer': 'https://www.walgreens.com/',
           },
           body: formData,
+          agent: httpsAgent,
         });
       } else if (isInventoryAPI) {
         // For inventory API, use JSON format with camelCase keys and products API key
@@ -421,6 +430,7 @@ class WalgreensAPIService {
             'Referer': 'https://www.walgreens.com/',
           },
           body: JSON.stringify(requestBody),
+          agent: httpsAgent,
         });
       } else {
         // For other APIs (offers, member, etc.), use JSON format with pool key
@@ -443,6 +453,7 @@ class WalgreensAPIService {
             'Referer': 'https://www.walgreens.com/',
           },
           body: JSON.stringify(requestBody),
+          agent: httpsAgent,
         });
       }
 
