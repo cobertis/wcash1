@@ -1864,7 +1864,21 @@ export class DatabaseStorage implements IStorage {
   }
   
   async getScanFiles(): Promise<ScanFile[]> {
-    return await db.select()
+    // Optimized: Don't load fileContent (can be 1MB+ per file with millions of numbers)
+    return await db.select({
+      id: scanFiles.id,
+      filename: scanFiles.filename,
+      fileContent: sql<string>`''`, // Return empty string instead of loading huge content
+      totalNumbers: scanFiles.totalNumbers,
+      processedNumbers: scanFiles.processedNumbers,
+      validNumbers: scanFiles.validNumbers,
+      invalidNumbers: scanFiles.invalidNumbers,
+      status: scanFiles.status,
+      errorMessage: scanFiles.errorMessage,
+      uploadedAt: scanFiles.uploadedAt,
+      processingStartedAt: scanFiles.processingStartedAt,
+      completedAt: scanFiles.completedAt,
+    })
       .from(scanFiles)
       .orderBy(desc(scanFiles.uploadedAt));
   }

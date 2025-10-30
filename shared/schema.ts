@@ -300,7 +300,10 @@ export const scanFiles = pgTable("scan_files", {
   uploadedAt: timestamp("uploaded_at").defaultNow(),
   processingStartedAt: timestamp("processing_started_at"),
   completedAt: timestamp("completed_at"),
-});
+}, (table) => ({
+  statusIdx: index("scan_files_status_idx").on(table.status),
+  uploadedAtIdx: index("scan_files_uploaded_at_idx").on(table.uploadedAt),
+}));
 
 export const scanSessions = pgTable("scan_sessions", {
   id: serial("id").primaryKey(),
@@ -331,6 +334,7 @@ export const scanQueue = pgTable("scan_queue", {
 }, (table) => ({
   phoneNumberIdx: uniqueIndex("scan_queue_phone_number_idx").on(table.phoneNumber),
   statusIdx: index("scan_queue_status_idx").on(table.status),
+  fileIdIdx: index("scan_queue_file_id_idx").on(table.fileId),
   pendingStatusIdx: index("scan_queue_pending_idx").on(table.status).where(sql`status = 'pending'`),
   processedStatusIdx: index("scan_queue_processed_idx").on(table.status).where(sql`status IN ('completed', 'invalid', 'error_permanent')`),
 }));
