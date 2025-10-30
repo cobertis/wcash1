@@ -1,10 +1,27 @@
 import { type Member, type Offer, type ClippedOffer, type RedeemedOffer } from "@shared/schema";
 import { RateLimiterManager } from './rate-limiter-manager';
 import { Agent } from 'https';
+import { networkInterfaces } from 'os';
 
-// Agent to bind requests to specific outbound IP
+// Detect if we're running on production server with floating IP
+function hasFloatingIP(): boolean {
+  const interfaces = networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    const addrs = interfaces[name];
+    if (addrs) {
+      for (const addr of addrs) {
+        if (addr.address === '5.161.27.53') {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Agent to bind requests to specific outbound IP (only if available)
 const httpsAgent = new Agent({ 
-  localAddress: '5.161.27.53',
+  ...(hasFloatingIP() ? { localAddress: '5.161.27.53' } : {}),
   keepAlive: true,
   keepAliveMsecs: 30000
 });
