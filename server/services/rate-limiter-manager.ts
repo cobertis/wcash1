@@ -1,105 +1,118 @@
 /**
- * Fixed Window Rate Limiter - Maximum Safe Throughput
+ * Token Bucket Rate Limiter - Continuous Smooth Flow
  * 
- * Each API key can make up to 250 requests per minute (safe limit).
- * When the limit is reached, the key is paused until the next minute starts.
+ * Each API key uses a token bucket that refills continuously.
+ * This prevents long pauses and maintains steady throughput.
  * 
  * Design:
- * - 250 requests per minute per API key (stays below 300 limit for safety)
- * - Counters reset every minute (00 seconds)
- * - Automatic pause/resume when limit reached
- * - Scales automatically: N keys × 250 = total capacity
- * - Example: 4 keys × 250 = 1,000 req/min | 20 keys × 250 = 5,000 req/min
+ * - 250 requests per minute per API key (safe limit)
+ * - Token bucket with 2 token capacity (prevents bursts)
+ * - Starts with 0 tokens (anti-burst design)
+ * - Refills at 1 token every 240ms (250/min = 1 token per 240ms)
+ * - Workers never wait more than 240ms for a token
+ * - Smooth, continuous flow without 60-second pauses
+ * 
+ * Benefits vs Fixed Window:
+ * - No 60s pauses when limit reached
+ * - Continuous steady flow
+ * - Better utilization (96% capacity vs bursts + pauses)
+ * - Predictable request timing
  */
 
-interface RateLimitWindow {
-  count: number;           // Requests made in current minute
-  windowStart: number;     // Timestamp of current minute start
-  maxRequests: number;     // 250 req/min limit
-  isPaused: boolean;       // True when limit reached
+interface TokenBucket {
+  tokens: number;              // Current available tokens (0-2)
+  capacity: number;            // Max tokens (2 to prevent bursts)
+  refillRate: number;          // ms per token (240ms = ~250 req/min)
+  lastRefill: number;          // Last refill timestamp
 }
 
-class ApiKeyRateLimiter {
-  private window: RateLimitWindow;
+class ApiKeyTokenBucket {
+  private bucket: TokenBucket;
   private readonly keyName: string;
   private totalRequests = 0;
-  private pauseCount = 0;
+  private totalWaitTime = 0;
+  private requestCount = 0;
 
-  constructor(keyName: string, maxRequests: number = 250) {
+  constructor(keyName: string, requestsPerMinute: number = 250) {
     this.keyName = keyName;
-    const now = Date.now();
-    this.window = {
-      count: 0,
-      windowStart: this.getMinuteStart(now),
-      maxRequests,
-      isPaused: false
-    };
-  }
-
-  /**
-   * Get the start of the current minute (seconds = 0)
-   */
-  private getMinuteStart(timestamp: number): number {
-    const date = new Date(timestamp);
-    date.setSeconds(0);
-    date.setMilliseconds(0);
-    return date.getTime();
-  }
-
-  /**
-   * Check if we're in a new minute and reset if needed
-   */
-  private checkAndResetWindow(): void {
-    const now = Date.now();
-    const currentMinuteStart = this.getMinuteStart(now);
     
-    // If we're in a new minute, reset the counter
-    if (currentMinuteStart > this.window.windowStart) {
-      this.window.count = 0;
-      this.window.windowStart = currentMinuteStart;
-      this.window.isPaused = false;
+    // Calculate refill rate: 60000ms / requestsPerMinute
+    const refillRate = Math.floor(60000 / requestsPerMinute); // 240ms for 250 req/min
+    
+    this.bucket = {
+      tokens: 0,              // START WITH ZERO (anti-burst)
+      capacity: 2,            // Small capacity prevents bursts
+      refillRate,             // 240ms per token
+      lastRefill: Date.now()
+    };
+    
+    console.log(`🪣 Token Bucket created for ${keyName}: ${requestsPerMinute} req/min (${refillRate}ms/token)`);
+  }
+
+  /**
+   * Refill tokens based on time elapsed
+   */
+  private refillTokens(): void {
+    const now = Date.now();
+    const elapsed = now - this.bucket.lastRefill;
+    
+    // Calculate how many tokens to add
+    const tokensToAdd = Math.floor(elapsed / this.bucket.refillRate);
+    
+    if (tokensToAdd > 0) {
+      this.bucket.tokens = Math.min(
+        this.bucket.capacity,
+        this.bucket.tokens + tokensToAdd
+      );
+      
+      // Update last refill time (account for fractional tokens)
+      this.bucket.lastRefill = now - (elapsed % this.bucket.refillRate);
     }
   }
 
   /**
-   * Check if key can make a request (non-blocking)
+   * Check if a token is available (non-blocking)
    */
   canAcquire(): boolean {
-    this.checkAndResetWindow();
-    return this.window.count < this.window.maxRequests;
+    this.refillTokens();
+    return this.bucket.tokens >= 1;
   }
 
   /**
-   * Wait until we can make a request (blocking - waits for next minute if needed)
+   * Acquire a token - waits if necessary (but never more than refillRate ms)
    */
   async acquire(): Promise<void> {
+    const startTime = Date.now();
+    
     while (true) {
-      this.checkAndResetWindow();
+      this.refillTokens();
       
-      // If we haven't reached the limit, allow the request
-      if (this.window.count < this.window.maxRequests) {
-        this.window.count++;
+      // If we have a token, consume it and proceed
+      if (this.bucket.tokens >= 1) {
+        this.bucket.tokens -= 1;
         this.totalRequests++;
+        this.requestCount++;
+        
+        const waitTime = Date.now() - startTime;
+        this.totalWaitTime += waitTime;
+        
+        // Log every 50 requests to track performance
+        if (this.requestCount % 50 === 0) {
+          const avgWait = Math.round(this.totalWaitTime / this.requestCount);
+          console.log(`🔑 ${this.keyName}: ${this.requestCount} requests, avg wait: ${avgWait}ms, tokens: ${this.bucket.tokens.toFixed(2)}`);
+        }
+        
         return;
       }
       
-      // We've reached the limit - pause until next minute
-      if (!this.window.isPaused) {
-        this.window.isPaused = true;
-        this.pauseCount++;
-        const nextMinute = this.window.windowStart + 60000;
-        const waitMs = nextMinute - Date.now();
-        console.log(`⏸️  API key ${this.keyName} reached ${this.window.maxRequests} req/min limit - pausing for ${Math.ceil(waitMs/1000)}s`);
-      }
+      // Calculate how long until next token is available
+      const now = Date.now();
+      const timeSinceLastRefill = now - this.bucket.lastRefill;
+      const timeUntilNextToken = this.bucket.refillRate - timeSinceLastRefill;
       
-      // Calculate time until next minute
-      const nextMinute = this.window.windowStart + 60000;
-      const waitMs = Math.max(100, nextMinute - Date.now() + 100); // Add 100ms buffer
-      
-      // Wait until next minute
+      // Wait for next token (with small buffer)
+      const waitMs = Math.max(10, timeUntilNextToken + 10);
       await new Promise(resolve => setTimeout(resolve, waitMs));
-      
-      // Loop will re-check and reset window
     }
   }
 
@@ -107,17 +120,21 @@ class ApiKeyRateLimiter {
    * Get current stats for monitoring
    */
   getStats() {
-    this.checkAndResetWindow();
+    this.refillTokens();
+    
+    const avgWait = this.requestCount > 0 
+      ? Math.round(this.totalWaitTime / this.requestCount) 
+      : 0;
+    
     return {
       keyName: this.keyName,
-      currentCount: this.window.count,
-      maxRequests: this.window.maxRequests,
-      isPaused: this.window.isPaused,
-      availableRequests: this.window.maxRequests - this.window.count,
-      utilizationPercent: Math.round((this.window.count / this.window.maxRequests) * 100),
+      availableTokens: this.bucket.tokens.toFixed(2),
+      capacity: this.bucket.capacity,
+      refillRate: this.bucket.refillRate,
       totalRequests: this.totalRequests,
-      pauseCount: this.pauseCount,
-      windowResetIn: Math.ceil((this.window.windowStart + 60000 - Date.now()) / 1000)
+      requestCount: this.requestCount,
+      avgWaitMs: avgWait,
+      requestsPerMinute: Math.round(60000 / this.bucket.refillRate)
     };
   }
 
@@ -126,13 +143,14 @@ class ApiKeyRateLimiter {
    */
   resetStats(): void {
     this.totalRequests = 0;
-    this.pauseCount = 0;
+    this.totalWaitTime = 0;
+    this.requestCount = 0;
   }
 }
 
 export class RateLimiterManager {
   private static instance: RateLimiterManager;
-  private limiters = new Map<string, ApiKeyRateLimiter>();
+  private limiters = new Map<string, ApiKeyTokenBucket>();
   private maxRequestsPerMinute: number = 250;
 
   private constructor() {}
@@ -151,12 +169,14 @@ export class RateLimiterManager {
     this.maxRequestsPerMinute = maxRequestsPerMinute;
     this.limiters.clear();
     for (const key of apiKeys) {
-      this.limiters.set(key.name, new ApiKeyRateLimiter(key.name, maxRequestsPerMinute));
+      this.limiters.set(key.name, new ApiKeyTokenBucket(key.name, maxRequestsPerMinute));
     }
-    console.log(`🚦 Fixed Window Rate Limiter initialized with ${apiKeys.length} API keys`);
-    console.log(`   Max requests per key: ${maxRequestsPerMinute} req/min`);
-    console.log(`   Auto-pause when limit reached, auto-resume next minute`);
+    console.log(`🪣 Token Bucket Rate Limiter initialized with ${apiKeys.length} API keys`);
+    console.log(`   Refill rate: ${maxRequestsPerMinute} req/min per key (${Math.floor(60000/maxRequestsPerMinute)}ms per token)`);
+    console.log(`   Bucket capacity: 2 tokens (anti-burst)`);
+    console.log(`   Initial tokens: 0 (prevents startup burst)`);
     console.log(`   Total capacity: ${apiKeys.length * maxRequestsPerMinute} req/min (${apiKeys.length} keys × ${maxRequestsPerMinute} req/min)`);
+    console.log(`   ✅ Smooth continuous flow - NO 60-second pauses`);
   }
 
   /**
@@ -171,7 +191,7 @@ export class RateLimiterManager {
   }
 
   /**
-   * Acquire permission to make a request (will wait if limit reached)
+   * Acquire permission to make a request (will wait if no tokens available)
    */
   async acquire(keyName: string): Promise<void> {
     const limiter = this.limiters.get(keyName);
