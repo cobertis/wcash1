@@ -399,6 +399,11 @@ export class ScannerService {
           // Process this number with the assigned API key
           // Token bucket will handle rate limiting automatically
           await this.processNumber(queueItem, apiKeyConfig);
+          
+          // CRITICAL: 600ms delay between requests to prevent bursts
+          // With 7 workers × 600ms = ~10 req/s total = 600 req/min
+          // = ~85 req/min per key (well below 250 limit, zero bursts)
+          await new Promise(resolve => setTimeout(resolve, 600));
         }
         
       } catch (error) {

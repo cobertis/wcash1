@@ -15,7 +15,7 @@
 interface RateLimitWindow {
   count: number;           // Requests made in current minute
   windowStart: number;     // Timestamp of current minute start
-  maxRequests: number;     // 300 req/min limit
+  maxRequests: number;     // 250 req/min limit
   isPaused: boolean;       // True when limit reached
 }
 
