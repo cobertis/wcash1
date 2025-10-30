@@ -1,0 +1,56 @@
+{
+  "couponDetails": {
+    "brandName": "Crest Scope",
+    "productName": "Crest Scope Classic Mouthwash Original Mint - 33.8 fl oz",
+    "requirement": "Compra 2+ productos Crest/Oral-B seleccionados",
+    "reward": "$5 W Cash rewards",
+    "expiration": "Válido hasta 07/21/2025",
+    "restrictions": "Límite 1 por transacción, productos participantes únicamente"
+  },
+  "recommendedProducts": [
+    {
+      "productName": "Crest Scope Classic Mouthwash Original Mint - 33.8 fl oz",
+      "regularPrice": "$6.49",
+      "salePrice": "$5.49",
+      "digitalCoupon": "$1.00 off",
+      "finalPrice": "$4.49"
+    },
+    {
+      "productName": "Oral-B Pro-Health Clinical Pro-Flex Toothbrush",
+      "regularPrice": "$4.99",
+      "salePrice": "$3.99",
+      "digitalCoupon": "$1.50 off",
+      "finalPrice": "$2.49"
+    }
+  ],
+  "transactionBreakdown": {
+    "totalBeforeCoupons": "$11.48",
+    "digitalCouponsApplied": "-$2.50",
+    "subtotalAfterCoupons": "$8.98",
+    "amountPaidOutOfPocket": "$6.98",
+    "wCashRewardReceived": "$5.00",
+    "finalNetCost": "$1.98",
+    "costPerUnit": "$0.99 por producto"
+  },
+  "nextTransaction": {
+    "description": "Usa tus $5 W Cash en tu próxima compra para obtener productos casi gratis",
+    "useWCashFrom": "Transacción anterior (compra Crest)",
+    "potentialSavings": "Hasta $5.00 en productos adicionales"
+  },
+  "optimizationTips": [
+    "Combina esta promoción con otras ofertas de salud bucal para maximizar ahorros",
+    "Usa tu W Cash en productos de mayor valor para obtener mejor rendimiento",
+    "Revisa si hay cupones adicionales de fabricante en la app de Walgreens",
+    "Compra durante promociones especiales para duplicar rewards"
+  ],
+  "stepByStepInstructions": [
+    "1. Agrega Crest Scope Classic Mouthwash 33.8 fl oz ($6.49) al carrito",
+    "2. Agrega Oral-B Pro-Health Clinical Pro-Flex Toothbrush ($4.99) al carrito",
+    "3. Aplica cupón digital de $1.00 off Crest Scope",
+    "4. Aplica cupón digital de $1.50 off Oral-B",
+    "5. Subtotal después de cupones: $8.98",
+    "6. Paga $6.98 de bolsillo (después de precios de oferta)",
+    "7. Recibe $5.00 W Cash rewards automáticamente",
+    "8. Costo neto real: $1.98 por ambos productos"
+  ]
+}

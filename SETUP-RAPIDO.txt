@@ -1,0 +1,77 @@
+================================================================
+SETUP RÁPIDO PARA TU SERVIDOR
+================================================================
+
+Tu base de datos:
+  postgresql://walgreens_user:TuNuevaPass1234@localhost:5432/walgreens_offers
+
+================================================================
+COMANDOS PARA TU SERVIDOR (copia y pega)
+================================================================
+
+# 1. Ir a tu directorio
+cd /root/wcash
+
+# 2. Crear archivo .env con tu configuración
+cat > .env << 'ENVEOF'
+DATABASE_URL="postgresql://walgreens_user:TuNuevaPass1234@localhost:5432/walgreens_offers"
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=MiPassword123
+SESSION_SECRET=abc123xyz789-change-this-to-something-random
+NODE_ENV=production
+PORT=5000
+ENVEOF
+
+# 3. Limpiar instalación anterior
+rm -rf node_modules dist
+
+# 4. Dar permisos a scripts
+chmod +x install.sh diagnose.sh build-production.sh start.sh start-pm2.sh
+
+# 5. Instalar (esto ahora instala TODO, incluyendo drizzle-kit)
+./install.sh
+
+# 6. Build de producción
+./build-production.sh
+
+# 7. Iniciar con PM2
+npm install -g pm2
+./start-pm2.sh
+
+# 8. Verificar que funciona
+curl http://localhost:5000/health
+
+# 9. Ver logs
+pm2 logs
+
+================================================================
+SI HAY ERRORES
+================================================================
+
+Error: "drizzle-kit not found"
+  → Los nuevos scripts ya lo arreglan. Re-descarga install.sh
+
+Error: "Cannot connect to database"
+  → Verifica PostgreSQL: sudo systemctl status postgresql
+  → Prueba conexión: psql -U walgreens_user -d walgreens_offers -c "SELECT 1"
+
+Error: "Port 5000 in use"
+  → Cambia PORT=3000 en .env
+
+================================================================
+DESPUÉS DE INSTALAR
+================================================================
+
+1. Accede a: http://tu-ip:5000 (o tu dominio si ya configuraste Caddy)
+
+2. Login:
+   Usuario: admin
+   Password: MiPassword123 (el que pusiste en .env)
+
+3. Ve a tab "Configuration" 
+
+4. Agrega tus API Keys de Walgreens
+
+5. ¡Listo para usar el scanner!
+
+================================================================

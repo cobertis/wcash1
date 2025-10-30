@@ -1,0 +1,62 @@
+================================================================
+EJECUTA ESTOS COMANDOS EN TU SERVIDOR
+================================================================
+
+# 1. Ver logs (el MÁS IMPORTANTE)
+pm2 logs walgreens-scanner --lines 50
+
+# Presiona Ctrl+C para salir de los logs
+
+# 2. Ver estado detallado
+pm2 show walgreens-scanner
+
+# 3. Ver solo errores
+pm2 logs walgreens-scanner --err --lines 30
+
+# 4. Verificar qué proceso usa el puerto 5000
+lsof -i:5000
+
+# 5. Ver procesos de PM2
+pm2 list
+
+================================================================
+COPIA Y PEGA EL OUTPUT DE "pm2 logs" AQUÍ
+================================================================
+
+Necesito ver los logs para saber qué error tiene la app.
+
+================================================================
+SOLUCIONES RÁPIDAS SEGÚN EL ERROR:
+================================================================
+
+SI VES: "Cannot find module"
+  cd /root/wcash
+  npm install
+  pm2 restart walgreens-scanner
+
+SI VES: "Cannot connect to database"
+  # Verificar que PostgreSQL funciona
+  psql -U walgreens_user -d walgreens_offers -c "SELECT 1"
+  # Si falla, verifica tu .env
+
+SI VES: "EADDRINUSE" o "Port already in use"
+  # Ver qué usa el puerto
+  lsof -i:5000
+  # Matar el proceso
+  kill -9 PID_DEL_PROCESO
+
+SI VES: "Error: listen EADDRNOTAVAIL"
+  # Cambiar bind address
+  echo "HOST=0.0.0.0" >> .env
+  pm2 restart walgreens-scanner
+
+================================================================
+REINICIAR DESDE CERO SI NADA FUNCIONA:
+================================================================
+
+pm2 delete walgreens-scanner
+pm2 flush
+./start-pm2.sh
+pm2 logs walgreens-scanner
+
+================================================================

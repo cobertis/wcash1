@@ -1,0 +1,11 @@
+[deployment]
+publicPort = 5000
+startCommand = "NODE_ENV=production tsx server/index.ts"
+buildCommand = "npm run build"
+
+[env]
+NODE_ENV = "production"
+
+[[ports]]
+localPort = 5000
+externalPort = 80

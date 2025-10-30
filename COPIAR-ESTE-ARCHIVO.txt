@@ -1,0 +1,82 @@
+================================================================
+COPIA ESTE CONTENIDO Y PÉGALO EN TU SERVIDOR
+================================================================
+
+Archivo: /root/wcash/ecosystem.config.cjs
+
+================================================================
+CONTENIDO (copiar todo):
+================================================================
+
+// PM2 ecosystem configuration
+// Documentación: https://pm2.keymetrics.io/docs/usage/application-declaration/
+
+module.exports = {
+  apps: [{
+    name: 'walgreens-scanner',
+    script: './dist/index.js',
+    instances: 1,
+    exec_mode: 'fork',
+    
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '1G',
+    
+    error_file: './logs/pm2-error.log',
+    out_file: './logs/pm2-out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    merge_logs: true,
+    
+    env: {
+      NODE_ENV: 'production',
+      PORT: 5000
+    },
+    
+    min_uptime: '10s',
+    max_restarts: 10,
+    restart_delay: 4000,
+    
+    kill_timeout: 5000,
+    wait_ready: true,
+    listen_timeout: 10000
+  }]
+};
+
+================================================================
+CÓMO APLICARLO:
+================================================================
+
+# En tu servidor ejecuta:
+cd /root/wcash
+nano ecosystem.config.cjs
+
+# Borra todo el contenido
+# Pega el contenido de arriba
+# Guarda: Ctrl+O, Enter, Ctrl+X
+
+# Reinicia PM2:
+pm2 delete walgreens-scanner
+./start-pm2.sh
+
+# Verifica:
+curl http://localhost:5000/health
+
+# Ver logs:
+pm2 logs
+
+================================================================
+DEBERÍA VER:
+================================================================
+
+curl http://localhost:5000/health
+  {"status":"ok","timestamp":"...","uptime":123}
+
+pm2 logs
+  🔵 Using Neon Database (serverless driver)
+  🔑 Loading API keys from database...
+  🚀 Initializing Scanner Service...
+  PM [express] serving on port 5000
+
+================================================================
+¡LISTO! Accede: http://TU-IP:5000
+================================================================

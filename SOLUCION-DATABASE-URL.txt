@@ -1,0 +1,68 @@
+================================================================
+SOLUCIÓN: PM2 no lee el archivo .env
+================================================================
+
+PROBLEMA:
+  PM2 inició la app pero DATABASE_URL no se cargó del .env
+  
+SOLUCIÓN:
+  Ya arreglé start-pm2.sh para que cargue las variables del .env
+
+================================================================
+EJECUTA EN TU SERVIDOR:
+================================================================
+
+cd /root/wcash
+
+# 1. Descargar el archivo start-pm2.sh arreglado
+# (O edítalo manualmente, ver abajo)
+
+# 2. Detener PM2
+pm2 delete walgreens-scanner
+
+# 3. Reiniciar con el script arreglado
+./start-pm2.sh
+
+# 4. Verificar
+curl http://localhost:5000/health
+
+# 5. Ver logs (NO debe mostrar error de DATABASE_URL)
+pm2 logs walgreens-scanner
+
+================================================================
+O EDITA MANUALMENTE start-pm2.sh:
+================================================================
+
+nano start-pm2.sh
+
+Agrega DESPUÉS de "echo PM2 START" y ANTES de "pm2 delete":
+
+# Cargar variables de entorno del .env
+if [ -f .env ]; then
+    echo "📋 Cargando variables de entorno desde .env..."
+    export $(cat .env | grep -v '^#' | xargs)
+else
+    echo "⚠️  Archivo .env no encontrado"
+fi
+
+Y cambia la última línea de:
+  pm2 start ecosystem.config.cjs --env production
+
+A:
+  pm2 start ecosystem.config.cjs --update-env
+
+Guardar: Ctrl+O, Enter, Ctrl+X
+
+================================================================
+DESPUÉS DE APLICAR EL FIX:
+================================================================
+
+cd /root/wcash
+pm2 delete walgreens-scanner
+./start-pm2.sh
+curl http://localhost:5000/health
+
+DEBE RETORNAR:
+  {"status":"ok","timestamp":"...","uptime":...}
+
+================================================================

@@ -1,0 +1,51 @@
+================================================================
+ARREGLADO: Ruta de PM2 incorrecta
+================================================================
+
+PROBLEMA:
+  PM2 buscaba: dist/server/index.js
+  Pero existe:  dist/index.js
+
+SOLUCIÓN:
+  Ya arreglé ecosystem.config.cjs
+
+================================================================
+EJECUTA EN TU SERVIDOR:
+================================================================
+
+cd /root/wcash
+
+# 1. Detener PM2 anterior (si existe)
+pm2 delete walgreens-scanner
+
+# 2. Re-iniciar con archivo corregido
+./start-pm2.sh
+
+# 3. Verificar que funciona
+curl http://localhost:5000/health
+
+# 4. Ver logs
+pm2 logs walgreens-scanner
+
+================================================================
+DEBERÍA VER:
+================================================================
+
+curl responde con:
+  {"status":"ok","timestamp":"2025-10-28T...","uptime":...}
+
+pm2 logs muestra:
+  🔵 Using Neon Database (serverless driver)
+  🔑 Loading API keys from database...
+  🚀 Initializing Scanner Service...
+  5:XX:XX PM [express] serving on port 5000
+
+================================================================
+DESPUÉS:
+================================================================
+
+Accede: http://TU-IP:5000
+Login: admin / [tu password del .env]
+Tab Configuration → Add API Keys
+
+¡LISTO!

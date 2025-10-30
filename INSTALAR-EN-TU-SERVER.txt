@@ -1,0 +1,78 @@
+=====================================
+INSTALACIÓN EN TU SERVIDOR
+Guía ultra-simple para Caddy + PM2
+=====================================
+
+1. REQUISITOS
+-------------
+✓ Ubuntu/Debian 20.04+
+✓ Node.js 18+ instalado
+✓ PostgreSQL instalado
+✓ Dominio apuntando a tu servidor
+
+2. INSTALACIÓN RÁPIDA
+---------------------
+
+# Clonar/subir archivos
+cd /var/www
+git clone tu-repo walgreens-scanner
+cd walgreens-scanner
+
+# Configurar
+cp .env.example .env
+nano .env  # Editar solo: DATABASE_URL, ADMIN_PASSWORD, SESSION_SECRET
+
+# Diagnosticar (te dice si algo falta)
+chmod +x diagnose.sh
+./diagnose.sh
+
+# Instalar
+./install.sh
+
+# Build producción
+./build-production.sh
+
+# Iniciar con PM2
+npm install -g pm2
+./start-pm2.sh
+
+3. CONFIGURAR CADDY
+-------------------
+
+# Copiar config
+sudo cp Caddyfile.example /etc/caddy/Caddyfile
+
+# Editar con TU dominio
+sudo nano /etc/caddy/Caddyfile
+
+# Buscar "tu-dominio.com" y reemplazar
+
+# Recargar
+sudo systemctl reload caddy
+
+4. VERIFICAR
+------------
+
+# Health check
+curl http://localhost:5000/health
+# Debe retornar: {"status":"ok",...}
+
+# Acceder desde web
+https://tudominio.com
+
+# Login: admin / tu_password
+
+5. CONFIGURAR API KEYS
+---------------------
+
+Login → Tab "Configuration" → Add API Keys
+
+¡LISTO!
+
+PROBLEMAS?
+----------
+./diagnose.sh     # Ejecuta diagnóstico
+pm2 logs          # Ver logs
+pm2 restart all   # Reiniciar
+
+Guía completa: SETUP-SERVER.md

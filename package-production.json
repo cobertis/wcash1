@@ -1,0 +1,35 @@
+{
+  "name": "walgreens-offers-explorer",
+  "version": "2.0.0",
+  "description": "Advanced Walgreens Digital Offers Management Platform",
+  "main": "production-start.js",
+  "scripts": {
+    "start": "node production-start.js",
+    "prod": "NODE_ENV=production node production-start.js",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.9.0",
+    "drizzle-orm": "^0.33.0",
+    "drizzle-kit": "^0.24.0",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "ws": "^8.14.2",
+    "node-fetch": "^3.3.2",
+    "tsx": "^4.7.0"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "walgreens",
+    "offers",
+    "api",
+    "scanner",
+    "production"
+  ],
+  "author": "Walgreens Offers Team",
+  "license": "MIT"
+}

@@ -1,0 +1,25 @@
+{
+  "name": "walgreens-offers-explorer",
+  "version": "1.0.0",
+  "description": "Optimized Walgreens account scanner and offers management system",
+  "deployment": {
+    "strategy": "optimized",
+    "build_cache": true,
+    "env_vars": {
+      "NODE_ENV": "production",
+      "REPLIT_DEPLOYMENT": "true"
+    },
+    "health_check": "/health",
+    "startup_timeout": 300,
+    "optimizations": {
+      "skip_dev_deps": true,
+      "compress_assets": true,
+      "tree_shake": true
+    }
+  },
+  "performance": {
+    "memory_limit": "1GB",
+    "cpu_limit": "1.0",
+    "max_startup_time": "60s"
+  }
+}

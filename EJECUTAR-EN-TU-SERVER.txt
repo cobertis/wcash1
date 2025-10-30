@@ -1,0 +1,50 @@
+================================================================
+¡CASI LISTO! Solo falta el BUILD
+================================================================
+
+PROBLEMA:
+  El build de producción NO se ejecutó.
+  El archivo dist/index.js no existe.
+
+SOLUCIÓN:
+  Ejecutar ./build-production.sh ANTES de ./start.sh
+
+================================================================
+EJECUTA ESTO EN TU SERVIDOR:
+================================================================
+
+cd /root/wcash
+
+# 1. Build de producción
+./build-production.sh
+
+# 2. Iniciar con PM2 (recomendado para producción)
+npm install -g pm2
+./start-pm2.sh
+
+# 3. Verificar que funciona
+curl http://localhost:5000/health
+
+# 4. Ver logs
+pm2 logs walgreens-scanner
+
+================================================================
+O si prefieres iniciar sin PM2 (para testing):
+================================================================
+
+./build-production.sh
+./start.sh
+
+================================================================
+DESPUÉS DE INICIAR:
+================================================================
+
+1. Accede: http://tu-ip:5000
+
+2. Login:
+   Usuario: admin
+   Password: [el que pusiste en .env]
+
+3. Configurar API Keys en tab "Configuration"
+
+================================================================
