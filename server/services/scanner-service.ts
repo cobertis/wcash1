@@ -400,11 +400,11 @@ export class ScannerService {
           // Token bucket will handle rate limiting automatically
           await this.processNumber(queueItem, apiKeyConfig);
           
-          // CRITICAL: 300ms delay = MAXIMUM SAFE SPEED
-          // With 7 workers × 300ms = ~23 req/s total = 1,400 req/min
-          // = 200 req/min per key (80% of 250 limit = 20% safety margin)
-          // = 84,000 números/hour stable throughput
-          await new Promise(resolve => setTimeout(resolve, 300));
+          // CRITICAL: 250ms delay = OPTIMIZED HIGH SPEED
+          // With 7 workers × 250ms = ~28 req/s total = 1,680 req/min
+          // = 240 req/min per key (96% of 250 limit = 4% safety margin)
+          // = 100,800 números/hour stable throughput
+          await new Promise(resolve => setTimeout(resolve, 250));
         }
         
       } catch (error) {
