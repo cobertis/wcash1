@@ -1964,16 +1964,16 @@ export class DatabaseStorage implements IStorage {
   }
   
   async getNextPendingNumbers(limit: number): Promise<ScanQueue[]> {
-    // Use FOR UPDATE SKIP LOCKED to prevent race conditions
-    // Each worker will lock different rows, ensuring no duplicates
+    // ULTRA-FAST: Direct UPDATE with partial index scan
+    // NO ORDER BY = instant with 87M records (uses scan_queue_pending_idx)
+    // FOR UPDATE SKIP LOCKED prevents race conditions between workers
     const result = await db.execute(sql`
       UPDATE ${scanQueue}
       SET status = 'processing', processed_at = NOW()
-      WHERE phone_number IN (
-        SELECT phone_number
+      WHERE id IN (
+        SELECT id
         FROM ${scanQueue}
         WHERE status = 'pending'
-        ORDER BY created_at ASC
         LIMIT ${limit}
         FOR UPDATE SKIP LOCKED
       )
