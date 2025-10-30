@@ -541,6 +541,18 @@ class WalgreensAPIService {
     };
   }
 
+  // Get Rate Limiter Statistics - Individual stats for each API key
+  public getRateLimiterStats() {
+    const rateLimiterManager = RateLimiterManager.getInstance();
+    const stats = rateLimiterManager.getAllStats();
+    
+    return {
+      timestamp: new Date().toISOString(),
+      totalKeys: stats.length,
+      keyStats: stats
+    };
+  }
+
   // Get Active API Keys for Intelligent Parallel Processing
   public async getActiveApiKeys() {
     if (!this.useMultipleKeys || this.apiKeyPool.length === 0) {

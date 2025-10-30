@@ -3679,6 +3679,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/api-pool/rate-limiter-stats - Get individual rate limiter statistics for each API key
+  app.get("/api/api-pool/rate-limiter-stats", async (req, res) => {
+    try {
+      const rateLimiterStats = walgreensAPI.getRateLimiterStats();
+      res.json(rateLimiterStats);
+    } catch (error) {
+      console.error('Error getting rate limiter stats:', error);
+      res.status(500).json({ error: 'Failed to get rate limiter stats' });
+    }
+  });
+
   // NEW: Get active API keys for intelligent parallel processing
   app.get('/api/api-pool/active-keys', async (req, res) => {
     try {
