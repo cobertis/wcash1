@@ -134,6 +134,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const rawMemberData = memberProfileData.profile || profile;
         
+        // CRITICAL FIX: Inject ZIP code from lookup response into rawMemberData
+        // getMember() doesn't return ZIP code, but lookupMember() does
+        if (profile.zipCode && !rawMemberData.zipCode) {
+          rawMemberData.zipCode = profile.zipCode;
+          console.log(`📍 INJECTED ZIP CODE from lookup: ${profile.zipCode} for ${phoneNumber}`);
+        }
+        
         // Extract balance and activity date
         let currentBalanceDollars = '0.00';
         if (rawMemberData?.Reward?.CurrentBalanceDollars !== undefined) {
