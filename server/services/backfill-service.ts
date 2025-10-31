@@ -527,11 +527,11 @@ export class BackfillService {
     accountQueue: MemberHistory[],
     rateLimiter: RateLimiterManager
   ): Promise<void> {
+    const apiKey = this.apiKeys[workerIndex % this.apiKeys.length];
+    
     while (accountQueue.length > 0 && !this.abortController?.signal.aborted) {
       const account = accountQueue.shift();
       if (!account) break;
-      
-      const apiKey = await rateLimiter.acquireToken();
       
       try {
         await this.processAccount(account, apiKey);
