@@ -51,6 +51,7 @@ import { eq, and, desc, asc, sql, inArray, gte, lte, lt, isNotNull, ne, or } fro
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import zipcodes from "zipcodes";
 
 // Cache invalidation system for optimized endpoints
 class CacheInvalidator {
@@ -120,6 +121,7 @@ loadZipStateMapping();
 
 /**
  * Helper function to convert ZIP code to state abbreviation
+ * Uses the "zipcodes" npm library for complete US ZIP code coverage (42,000+ ZIP codes)
  * @param zipCode - ZIP code string (handles formats like "33185" or "33185-5422")
  * @returns State abbreviation (e.g., "FL") or empty string if not found
  */
@@ -128,17 +130,28 @@ export function zipCodeToState(zipCode: string): string {
     return '';
   }
   
-  // Load mapping if not already loaded
-  const mapping = loadZipStateMapping();
-  if (!mapping || !mapping.zipToState) {
+  try {
+    // Clean the ZIP code (remove suffix like -5422)
+    const cleanZip = zipCode.toString().split('-')[0].trim();
+    
+    // Use zipcodes library for complete coverage
+    const result = zipcodes.lookup(cleanZip);
+    
+    if (result && result.state) {
+      return result.state;
+    }
+    
+    // Fallback to local mapping if zipcodes library fails
+    const mapping = loadZipStateMapping();
+    if (mapping && mapping.zipToState) {
+      return mapping.zipToState[cleanZip] || '';
+    }
+    
+    return '';
+  } catch (error) {
+    console.error(`Error looking up state for ZIP ${zipCode}:`, error);
     return '';
   }
-  
-  // Clean the ZIP code (remove suffix like -9740)
-  const cleanZip = zipCode.toString().split('-')[0].trim();
-  
-  // Return state abbreviation or empty string
-  return mapping.zipToState[cleanZip] || '';
 }
 
 export interface IStorage {
