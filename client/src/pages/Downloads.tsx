@@ -152,22 +152,17 @@ export default function Downloads() {
         return;
       }
 
-      // STEP 1: Create CSV content with ZIP Code and State columns
-      const zipToState = zipToStateData?.zipToState || {};
+      // STEP 1: Create CSV content with ZIP Code and State columns (use DB data directly)
       const headers = ["Teléfono", "Nombre", "Tarjeta", "Balance", "Código Postal", "Estado", "Email", "Descargada", "Fecha Descarga"];
       const rows = filteredAccounts.map((acc: Account) => {
-        const zipCode = acc.zipCode || "";
-        const cleanZip = zipCode.split('-')[0]; // Remove suffix like -9740
-        const state = zipToState[cleanZip] || "";
-        
         return [
           acc.phoneNumber,
           acc.memberName || "",
           acc.cardNumber || "",
           acc.currentBalanceDollars || "0.00",
-          zipCode,
-          state,
-          acc.emailAddress || "", // FIXED: Include email from account data
+          acc.zipCode || "",
+          acc.state || "", // Use state directly from database
+          acc.emailAddress || "", // Use email from database
           "Sí", // Will be marked as downloaded
           new Date().toLocaleDateString(), // Current date as download date
         ];

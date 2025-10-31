@@ -5,14 +5,14 @@ import { zipCodeToState } from '../storage';
 import type { BackfillJob, ApiKeyPool, MemberHistory } from '@shared/schema';
 
 /**
- * BackfillService - Populate ZIP codes and states for all accounts
+ * BackfillService - Populate ZIP codes, states AND emails for ALL accounts
  * 
  * This service:
- * - Queries all accounts where zip_code IS NULL
+ * - Queries ALL accounts (prioritizes by highest balance first)
  * - Re-queries Walgreens API using lookupMember(phoneNumber)
- * - Extracts zipCode from profile.zipCode
+ * - Extracts zipCode, email from profile
  * - Calculates state using zipCodeToState()
- * - Updates member_history SET zip_code = X, state = Y
+ * - Updates member_history SET zip_code = X, state = Y, email_address = Z
  * - Uses RateLimiterManager with 7 parallel workers (one per API key)
  * - Tracks progress in backfill_jobs table
  * - Resumable: Checks for incomplete jobs on startup
@@ -115,11 +115,10 @@ export class BackfillService {
     
     // Create or resume job
     if (!this.currentJob) {
-      // Get total count of accounts without ZIP code
-      const accountsWithoutZip = await storage.getAccountsWithoutZipCode(1, 0);
-      const totalCount = await storage.getAccountsWithoutZipCodeCount();
+      // Get total count of ALL accounts (prioritize by balance)
+      const totalCount = await storage.getAllAccountsForBackfillCount();
       
-      console.log(`📊 Found ${totalCount} accounts without ZIP code`);
+      console.log(`📊 Processing ALL ${totalCount} accounts to update ZIP + State + Email`);
       
       this.currentJob = await storage.createBackfillJob({
         status: 'running',
@@ -216,8 +215,8 @@ export class BackfillService {
     
     try {
       while (this.isRunning && !this.abortController?.signal.aborted) {
-        // Fetch next batch of accounts without ZIP code
-        const accounts = await storage.getAccountsWithoutZipCode(
+        // Fetch next batch of ALL accounts (prioritized by balance)
+        const accounts = await storage.getAllAccountsForBackfill(
           this.BATCH_SIZE,
           this.currentOffset
         );
@@ -313,7 +312,7 @@ export class BackfillService {
   }
 
   /**
-   * Process a single account - fetch ZIP code and update
+   * Process a single account - fetch ZIP code, state, and email
    */
   private async processAccount(account: MemberHistory, apiKey: ApiKeyPool): Promise<void> {
     try {
@@ -330,9 +329,10 @@ export class BackfillService {
         return;
       }
       
-      // Extract ZIP code from profile
+      // Extract ZIP code and email from profile
       const profile = lookupData.matchProfiles[0];
       const zipCode = profile.zipCode;
+      const email = profile.email || '';
       
       if (!zipCode) {
         console.log(`⚠️ No ZIP code in profile for ${account.phoneNumber}`);
@@ -343,10 +343,10 @@ export class BackfillService {
       // Calculate state from ZIP code
       const state = zipCodeToState(zipCode);
       
-      // Update member_history with ZIP code and state
-      await storage.updateMemberZipAndState(account.phoneNumber, zipCode, state);
+      // Update member_history with ZIP code, state, AND email
+      await storage.updateMemberZipStateEmail(account.phoneNumber, zipCode, state, email);
       
-      console.log(`✅ Updated ${account.phoneNumber}: ZIP=${zipCode}, State=${state}`);
+      console.log(`✅ Updated ${account.phoneNumber}: ZIP=${zipCode}, State=${state}, Email=${email ? 'YES' : 'NO'}`);
       this.updatedCount++;
       
     } catch (error: any) {

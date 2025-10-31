@@ -298,6 +298,9 @@ export interface IStorage {
   getAccountsWithoutZipCode(limit: number, offset: number): Promise<MemberHistory[]>;
   getAccountsWithoutZipCodeCount(): Promise<number>;
   updateMemberZipAndState(phoneNumber: string, zipCode: string, state: string): Promise<void>;
+  updateMemberZipStateEmail(phoneNumber: string, zipCode: string, state: string, email: string): Promise<void>;
+  getAllAccountsForBackfill(limit: number, offset: number): Promise<MemberHistory[]>;
+  getAllAccountsForBackfillCount(): Promise<number>;
 }
 
 export class MemStorage implements IStorage {
@@ -886,6 +889,18 @@ export class MemStorage implements IStorage {
   
   async updateMemberZipAndState(phoneNumber: string, zipCode: string, state: string): Promise<void> {
     return;
+  }
+  
+  async updateMemberZipStateEmail(phoneNumber: string, zipCode: string, state: string, email: string): Promise<void> {
+    return;
+  }
+  
+  async getAllAccountsForBackfill(limit: number, offset: number): Promise<MemberHistory[]> {
+    return [];
+  }
+  
+  async getAllAccountsForBackfillCount(): Promise<number> {
+    return 0;
   }
 }
 
@@ -2324,6 +2339,31 @@ export class DatabaseStorage implements IStorage {
         state
       })
       .where(eq(memberHistory.phoneNumber, phoneNumber));
+  }
+  
+  async updateMemberZipStateEmail(phoneNumber: string, zipCode: string, state: string, email: string): Promise<void> {
+    await db.update(memberHistory)
+      .set({
+        zipCode,
+        state,
+        emailAddress: email
+      })
+      .where(eq(memberHistory.phoneNumber, phoneNumber));
+  }
+  
+  async getAllAccountsForBackfill(limit: number, offset: number): Promise<MemberHistory[]> {
+    const result = await db.select()
+      .from(memberHistory)
+      .orderBy(desc(memberHistory.currentBalance))
+      .limit(limit)
+      .offset(offset);
+    return result;
+  }
+  
+  async getAllAccountsForBackfillCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)::int` })
+      .from(memberHistory);
+    return result[0]?.count || 0;
   }
 }
 
