@@ -2373,6 +2373,12 @@ export class DatabaseStorage implements IStorage {
   async getAllAccountsForBackfill(limit: number, offset: number): Promise<MemberHistory[]> {
     const result = await db.select()
       .from(memberHistory)
+      .where(or(
+        eq(memberHistory.zipCode, ''),
+        sql`${memberHistory.zipCode} IS NULL`,
+        eq(memberHistory.state, ''),
+        sql`${memberHistory.state} IS NULL`
+      ))
       .orderBy(desc(memberHistory.currentBalance))
       .limit(limit)
       .offset(offset);
@@ -2381,7 +2387,13 @@ export class DatabaseStorage implements IStorage {
   
   async getAllAccountsForBackfillCount(): Promise<number> {
     const result = await db.select({ count: sql<number>`count(*)::int` })
-      .from(memberHistory);
+      .from(memberHistory)
+      .where(or(
+        eq(memberHistory.zipCode, ''),
+        sql`${memberHistory.zipCode} IS NULL`,
+        eq(memberHistory.state, ''),
+        sql`${memberHistory.state} IS NULL`
+      ));
     return result[0]?.count || 0;
   }
   
