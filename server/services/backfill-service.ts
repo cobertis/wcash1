@@ -44,11 +44,12 @@ export class BackfillService {
   private startTime?: number;
   private currentOffset: number = 0;
   
-  // Batch size for fetching accounts
-  private readonly BATCH_SIZE = 100;
+  // Batch size for fetching accounts (INCREASED for maximum throughput)
+  private readonly BATCH_SIZE = 500;
   
-  // Number of parallel workers (one per API key)
-  private readonly WORKER_COUNT = 7;
+  // Number of parallel workers (INCREASED for aggressive parallelism)
+  // With 7 API keys, this allows ~4 workers per key for maximum throughput
+  private readonly WORKER_COUNT = 30;
 
   private constructor() {}
 
