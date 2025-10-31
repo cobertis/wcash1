@@ -444,6 +444,7 @@ export default function Downloads() {
                       <TableHead>Balance</TableHead>
                       <TableHead>Código Postal</TableHead>
                       <TableHead>Estado</TableHead>
+                      <TableHead>Email</TableHead>
                       <TableHead>Estado de Descarga</TableHead>
                       <TableHead>Fecha Descarga</TableHead>
                     </TableRow>
@@ -467,12 +468,10 @@ export default function Downloads() {
                         </TableCell>
                         <TableCell>{account.zipCode || "-"}</TableCell>
                         <TableCell>
-                          {(() => {
-                            const zipCode = account.zipCode || "";
-                            const cleanZip = zipCode.split('-')[0];
-                            const zipToState = zipToStateData?.zipToState || {};
-                            return zipToState[cleanZip] || "-";
-                          })()}
+                          {account.state || "-"}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {account.emailAddress || "-"}
                         </TableCell>
                         <TableCell>
                           {account.downloaded ? (
