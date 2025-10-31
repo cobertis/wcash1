@@ -525,6 +525,7 @@ export class ScannerService {
           currentBalance: currentBalance,
           currentBalanceDollars: currentBalanceDollars,
           lastActivityDate: memberDetails.profile?.Reward?.LastActivityDate || null,
+          zipCode: profile.zipCode || null,
           fileId: queueItem.fileId || undefined,
           sessionId: this.currentSession?.id
         };

@@ -46,7 +46,8 @@ import {
 import { db } from "./db";
 import { eq, and, desc, asc, sql, inArray, gte, lte, lt, isNotNull, ne, or } from "drizzle-orm";
 import { readFileSync } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 
 // Cache invalidation system for optimized endpoints
 class CacheInvalidator {
@@ -83,6 +84,8 @@ let zipStateMapping: { stateToZips: Record<string, string[]>; zipToState: Record
 function loadZipStateMapping() {
   if (!zipStateMapping) {
     try {
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = dirname(__filename);
       const mappingPath = join(__dirname, 'zip-state-mapping.json');
       const data = JSON.parse(readFileSync(mappingPath, 'utf-8'));
       
@@ -90,7 +93,6 @@ function loadZipStateMapping() {
       const zipToState: Record<string, string> = {};
       for (const [state, zips] of Object.entries(data.stateToZips as Record<string, string[]>)) {
         for (const zip of zips) {
-          // Remove any suffix like -9740 from zip codes
           const cleanZip = zip.split('-')[0];
           zipToState[cleanZip] = state;
         }
@@ -101,7 +103,7 @@ function loadZipStateMapping() {
         zipToState
       };
       
-      console.log(`✅ Loaded ZIP-State mapping: ${Object.keys(zipStateMapping.stateToZips).length} states`);
+      console.log(`✅ Loaded ZIP-State mapping: ${Object.keys(zipStateMapping.stateToZips).length} states, ${Object.keys(zipToState).length} ZIP codes`);
     } catch (error) {
       console.error('❌ Failed to load ZIP-State mapping:', error);
       zipStateMapping = { stateToZips: {}, zipToState: {} };
@@ -2174,6 +2176,10 @@ export class DatabaseStorage implements IStorage {
   // Scanner results operations
   async addScanResult(result: InsertScanResult): Promise<void> {
     try {
+      // Calculate state from zipCode
+      const zipCode = result.zipCode || null;
+      const state = zipCode ? zipCodeToState(zipCode) : null;
+      
       // 1. Save to scan_results table
       await db.insert(scanResults)
         .values(result)
@@ -2185,6 +2191,8 @@ export class DatabaseStorage implements IStorage {
             currentBalance: result.currentBalance,
             currentBalanceDollars: result.currentBalanceDollars,
             lastActivityDate: result.lastActivityDate,
+            zipCode: result.zipCode,
+            state: state,
             fileId: result.fileId,
             sessionId: result.sessionId,
             scannedAt: new Date()
@@ -2200,6 +2208,8 @@ export class DatabaseStorage implements IStorage {
           currentBalance: result.currentBalance || 0,
           currentBalanceDollars: result.currentBalanceDollars || 0,
           lastActivityDate: result.lastActivityDate || null,
+          zipCode: zipCode,
+          state: state,
           isMarked: false,
           markedAt: null
         })
@@ -2211,11 +2221,13 @@ export class DatabaseStorage implements IStorage {
             currentBalance: result.currentBalance || 0,
             currentBalanceDollars: result.currentBalanceDollars || 0,
             lastActivityDate: result.lastActivityDate || null,
+            zipCode: zipCode,
+            state: state,
             updatedAt: new Date()
           }
         });
       
-      console.log(`✅ Saved scan result for ${result.phoneNumber} (balance: $${result.currentBalanceDollars})`);
+      console.log(`✅ Saved scan result for ${result.phoneNumber} (balance: $${result.currentBalanceDollars}, zip: ${zipCode}, state: ${state})`);
     } catch (error) {
       console.error(`❌ Error saving scan result for ${result.phoneNumber}:`, error);
     }

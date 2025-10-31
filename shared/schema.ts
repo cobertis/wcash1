@@ -351,6 +351,8 @@ export const scanResults = pgTable("scan_results", {
   currentBalance: integer("current_balance").default(0),
   currentBalanceDollars: text("current_balance_dollars").default("0.00"),
   lastActivityDate: text("last_activity_date"),
+  zipCode: text("zip_code"),
+  state: text("state"),
   fileId: integer("file_id").references(() => scanFiles.id),
   sessionId: integer("session_id").references(() => scanSessions.id),
   scannedAt: timestamp("scanned_at").defaultNow(),
