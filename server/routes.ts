@@ -4876,6 +4876,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const filters = {
         downloaded: req.query.downloaded === "true" ? true : req.query.downloaded === "false" ? false : undefined,
         zipCode: req.query.zipCode as string | undefined,
+        state: req.query.state as string | undefined,
         minBalance: req.query.minBalance ? parseFloat(req.query.minBalance as string) : undefined,
         dateFrom: req.query.dateFrom as string | undefined,
         dateTo: req.query.dateTo as string | undefined,
@@ -4885,7 +4886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const result = await storage.getAccountsWithFilters(filters);
       
-      console.log(`📊 DOWNLOADS: Fetched ${result.accounts.length} accounts (${result.total} total)`);
+      console.log(`📊 DOWNLOADS: Fetched ${result.accounts.length} accounts (${result.total} total)${filters.state ? ` for state ${filters.state}` : ''}`);
       
       res.json(result);
     } catch (error) {
@@ -4920,6 +4921,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("❌ DOWNLOADS MARK DOWNLOADED ERROR:", error);
       res.status(500).json({
         error: "Failed to mark accounts as downloaded",
+        message: (error as Error).message
+      });
+    }
+  });
+
+  // 3. GET /api/downloads/states - Get list of available states
+  app.get("/api/downloads/states", async (req, res) => {
+    try {
+      const states = storage.getAvailableStates();
+      
+      console.log(`📊 DOWNLOADS: Retrieved ${states.length} available states`);
+      
+      res.json({ states });
+    } catch (error) {
+      console.error("❌ DOWNLOADS GET STATES ERROR:", error);
+      res.status(500).json({
+        error: "Failed to get states",
+        message: (error as Error).message
+      });
+    }
+  });
+
+  // 4. GET /api/downloads/zip-to-state - Get ZIP to state mapping
+  app.get("/api/downloads/zip-to-state", async (req, res) => {
+    try {
+      const zipToState = storage.getZipToStateMapping();
+      
+      console.log(`📊 DOWNLOADS: Retrieved ZIP-to-state mapping with ${Object.keys(zipToState).length} ZIP codes`);
+      
+      res.json({ zipToState });
+    } catch (error) {
+      console.error("❌ DOWNLOADS GET ZIP-TO-STATE ERROR:", error);
+      res.status(500).json({
+        error: "Failed to get ZIP-to-state mapping",
         message: (error as Error).message
       });
     }

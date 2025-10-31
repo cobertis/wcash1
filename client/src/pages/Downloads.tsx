@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 interface FilterState {
   downloadStatus: "all" | "downloaded" | "not_downloaded";
   zipCode: string;
+  state: string;
   minBalance: string;
   dateFrom: string;
   dateTo: string;
@@ -37,6 +38,7 @@ export default function Downloads() {
   const [filters, setFilters] = useState<FilterState>({
     downloadStatus: "all",
     zipCode: "",
+    state: "",
     minBalance: "",
     dateFrom: "",
     dateTo: "",
@@ -57,6 +59,9 @@ export default function Downloads() {
     if (filters.zipCode) {
       params.append("zipCode", filters.zipCode);
     }
+    if (filters.state) {
+      params.append("state", filters.state);
+    }
     if (filters.minBalance) {
       params.append("minBalance", filters.minBalance);
     }
@@ -69,6 +74,26 @@ export default function Downloads() {
     
     return params.toString();
   };
+
+  // Fetch list of states
+  const { data: statesData } = useQuery({
+    queryKey: ["/api/downloads/states"],
+    queryFn: async () => {
+      const response = await fetch("/api/downloads/states");
+      if (!response.ok) throw new Error("Failed to fetch states");
+      return response.json();
+    },
+  });
+
+  // Fetch ZIP to state mapping
+  const { data: zipToStateData } = useQuery({
+    queryKey: ["/api/downloads/zip-to-state"],
+    queryFn: async () => {
+      const response = await fetch("/api/downloads/zip-to-state");
+      if (!response.ok) throw new Error("Failed to fetch ZIP-to-state mapping");
+      return response.json();
+    },
+  });
 
   // Fetch accounts with filters
   const { data, isLoading, refetch } = useQuery({
@@ -105,54 +130,86 @@ export default function Downloads() {
     },
   });
 
-  // Download CSV
-  const downloadCSV = () => {
-    const accountsToDownload = data?.accounts.filter((acc: Account) => 
+  // Download CSV with automatic marking as downloaded
+  const downloadCSV = async () => {
+    // Filter accounts to download based on selection
+    const filteredAccounts = data?.accounts.filter((acc: Account) => 
       selectedAccounts.has(acc.id)
     ) || [];
 
-    if (accountsToDownload.length === 0) {
+    // Validate that we have accounts to export
+    if (filteredAccounts.length === 0) {
       toast({
-        title: "⚠️ Advertencia",
-        description: "Selecciona al menos una cuenta para descargar",
+        title: "❌ Error",
+        description: "No hay cuentas para exportar. Selecciona al menos una cuenta.",
         variant: "destructive",
       });
       return;
     }
 
-    // Create CSV content
-    const headers = ["Teléfono", "Nombre", "Tarjeta", "Balance", "Código Postal", "Email", "Descargada", "Fecha Descarga"];
-    const rows = accountsToDownload.map((acc: Account) => [
-      acc.phoneNumber,
-      acc.memberName || "",
-      acc.cardNumber || "",
-      acc.currentBalanceDollars || "0.00",
-      acc.zipCode || "",
-      "", // Email could be added if available
-      acc.downloaded ? "Sí" : "No",
-      acc.downloadedAt ? new Date(acc.downloadedAt).toLocaleDateString() : "",
-    ]);
+    try {
+      // STEP 1: Create CSV content with ZIP Code and State columns
+      const zipToState = zipToStateData?.zipToState || {};
+      const headers = ["Teléfono", "Nombre", "Tarjeta", "Balance", "Código Postal", "Estado", "Email", "Descargada", "Fecha Descarga"];
+      const rows = filteredAccounts.map((acc: Account) => {
+        const zipCode = acc.zipCode || "";
+        const cleanZip = zipCode.split('-')[0]; // Remove suffix like -9740
+        const state = zipToState[cleanZip] || "";
+        
+        return [
+          acc.phoneNumber,
+          acc.memberName || "",
+          acc.cardNumber || "",
+          acc.currentBalanceDollars || "0.00",
+          zipCode,
+          state,
+          "", // Email could be added if available
+          "Sí", // Will be marked as downloaded
+          new Date().toLocaleDateString(), // Current date as download date
+        ];
+      });
 
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
-    ].join("\n");
+      const csvContent = [
+        headers.join(","),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+      ].join("\n");
 
-    // Download file
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `cuentas_${new Date().toISOString().split("T")[0]}.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      // STEP 2: Only mark as downloaded if we have valid results
+      if (filteredAccounts.length > 0) {
+        const accountIds = filteredAccounts.map((acc: Account) => acc.id);
+        await apiRequest("/api/downloads/mark-downloaded", {
+          method: "POST",
+          body: JSON.stringify({ accountIds }),
+        });
+      }
 
-    toast({
-      title: "✅ Descarga completada",
-      description: `${accountsToDownload.length} cuenta(s) descargadas`,
-    });
+      // STEP 3: Download file
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `cuentas_${new Date().toISOString().split("T")[0]}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // STEP 4: Show success message and refresh
+      toast({
+        title: "✅ Descarga completada",
+        description: `${filteredAccounts.length} cuenta(s) descargadas y marcadas automáticamente`,
+      });
+
+      // Clear selection and refresh data
+      setSelectedAccounts(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/downloads/accounts"] });
+    } catch (error) {
+      toast({
+        title: "❌ Error al descargar",
+        description: error instanceof Error ? error.message : "Error al generar o descargar el CSV",
+        variant: "destructive",
+      });
+    }
   };
 
   // Toggle account selection
@@ -252,6 +309,30 @@ export default function Downloads() {
               />
             </div>
 
+            {/* State Filter */}
+            <div className="space-y-2">
+              <Label htmlFor="state">Estado</Label>
+              <Select
+                value={filters.state}
+                onValueChange={(value: string) => {
+                  setFilters({ ...filters, state: value });
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger id="state" data-testid="select-state">
+                  <SelectValue placeholder="Todos los estados" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Todos los estados</SelectItem>
+                  {(statesData?.states || []).map((state: string) => (
+                    <SelectItem key={state} value={state}>
+                      {state}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Min Balance */}
             <div className="space-y-2">
               <Label htmlFor="minBalance">Balance Mínimo ($)</Label>
@@ -307,6 +388,7 @@ export default function Downloads() {
                   setFilters({
                     downloadStatus: "all",
                     zipCode: "",
+                    state: "",
                     minBalance: "",
                     dateFrom: "",
                     dateTo: "",
@@ -380,6 +462,7 @@ export default function Downloads() {
                       <TableHead>Balance</TableHead>
                       <TableHead>Código Postal</TableHead>
                       <TableHead>Estado</TableHead>
+                      <TableHead>Estado de Descarga</TableHead>
                       <TableHead>Fecha Descarga</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -401,6 +484,14 @@ export default function Downloads() {
                           </span>
                         </TableCell>
                         <TableCell>{account.zipCode || "-"}</TableCell>
+                        <TableCell>
+                          {(() => {
+                            const zipCode = account.zipCode || "";
+                            const cleanZip = zipCode.split('-')[0];
+                            const zipToState = zipToStateData?.zipToState || {};
+                            return zipToState[cleanZip] || "-";
+                          })()}
+                        </TableCell>
                         <TableCell>
                           {account.downloaded ? (
                             <Badge variant="secondary" className="bg-blue-100 text-blue-700">

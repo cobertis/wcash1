@@ -45,6 +45,8 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, sql, inArray, gte, lte, lt, isNotNull, ne, or } from "drizzle-orm";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 // Cache invalidation system for optimized endpoints
 class CacheInvalidator {
@@ -74,6 +76,42 @@ class CacheInvalidator {
 }
 
 const cacheInvalidator = CacheInvalidator.getInstance();
+
+// Load ZIP to State mapping
+let zipStateMapping: { stateToZips: Record<string, string[]>; zipToState: Record<string, string> } | null = null;
+
+function loadZipStateMapping() {
+  if (!zipStateMapping) {
+    try {
+      const mappingPath = join(__dirname, 'zip-state-mapping.json');
+      const data = JSON.parse(readFileSync(mappingPath, 'utf-8'));
+      
+      // Create reverse mapping (zipToState)
+      const zipToState: Record<string, string> = {};
+      for (const [state, zips] of Object.entries(data.stateToZips as Record<string, string[]>)) {
+        for (const zip of zips) {
+          // Remove any suffix like -9740 from zip codes
+          const cleanZip = zip.split('-')[0];
+          zipToState[cleanZip] = state;
+        }
+      }
+      
+      zipStateMapping = {
+        stateToZips: data.stateToZips,
+        zipToState
+      };
+      
+      console.log(`✅ Loaded ZIP-State mapping: ${Object.keys(zipStateMapping.stateToZips).length} states`);
+    } catch (error) {
+      console.error('❌ Failed to load ZIP-State mapping:', error);
+      zipStateMapping = { stateToZips: {}, zipToState: {} };
+    }
+  }
+  return zipStateMapping;
+}
+
+// Initialize mapping on module load
+loadZipStateMapping();
 
 export interface IStorage {
   // Member operations
@@ -226,6 +264,8 @@ export interface IStorage {
     limit?: number;
   }): Promise<{ accounts: MemberHistory[]; total: number }>;
   markAccountsAsDownloaded(accountIds: number[]): Promise<void>;
+  getAvailableStates(): string[];
+  getZipToStateMapping(): Record<string, string>;
 }
 
 export class MemStorage implements IStorage {
@@ -771,6 +811,16 @@ export class MemStorage implements IStorage {
     // Stub implementation - does nothing
     // System uses DatabaseStorage in production
     return;
+  }
+  
+  getAvailableStates(): string[] {
+    const mapping = loadZipStateMapping();
+    return Object.keys(mapping.stateToZips).sort();
+  }
+  
+  getZipToStateMapping(): Record<string, string> {
+    const mapping = loadZipStateMapping();
+    return mapping.zipToState;
   }
 }
 
@@ -2153,6 +2203,7 @@ export class DatabaseStorage implements IStorage {
   async getAccountsWithFilters(filters: {
     downloaded?: boolean;
     zipCode?: string;
+    state?: string;
     minBalance?: number;
     dateFrom?: string;
     dateTo?: string;
@@ -2171,9 +2222,34 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(memberHistory.downloaded, filters.downloaded));
     }
     
-    // Filter by zip code
+    // Filter by zip code (exact match)
     if (filters.zipCode) {
       conditions.push(eq(memberHistory.zipCode, filters.zipCode));
+    }
+    
+    // Filter by state (using ZIP code list from mapping)
+    if (filters.state && !filters.zipCode) {
+      const mapping = loadZipStateMapping();
+      const stateZips = mapping.stateToZips[filters.state];
+      
+      if (stateZips && stateZips.length > 0) {
+        // Clean ZIP codes (remove suffix like -9740)
+        const cleanZips = stateZips.map(zip => zip.split('-')[0]);
+        
+        // Use SQL to extract first 5 digits from ZIP code for comparison
+        // This handles ZIP codes with suffixes like "33196-9740"
+        conditions.push(
+          sql`LEFT(COALESCE(${memberHistory.zipCode}, ''), 5) IN (${sql.join(
+            cleanZips.map(z => sql`${z}`), 
+            sql`, `
+          )})`
+        );
+        console.log(`🗺️ STATE FILTER: Filtering by state ${filters.state} (${cleanZips.length} ZIP codes)`);
+      } else {
+        // State not found, return empty results
+        console.warn(`⚠️ STATE FILTER: State ${filters.state} not found in mapping`);
+        return { accounts: [], total: 0 };
+      }
     }
     
     // Filter by minimum balance
@@ -2224,6 +2300,16 @@ export class DatabaseStorage implements IStorage {
       .where(inArray(memberHistory.id, accountIds));
     
     console.log(`✅ Marked ${accountIds.length} accounts as downloaded`);
+  }
+  
+  getAvailableStates(): string[] {
+    const mapping = loadZipStateMapping();
+    return Object.keys(mapping.stateToZips).sort();
+  }
+  
+  getZipToStateMapping(): Record<string, string> {
+    const mapping = loadZipStateMapping();
+    return mapping.zipToState;
   }
 }
 
