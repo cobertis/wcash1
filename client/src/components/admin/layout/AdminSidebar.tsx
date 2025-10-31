@@ -40,6 +40,7 @@ const menuItems = [
   { id: 'accounts-5-plus', label: 'Cuentas $5+', icon: Activity, href: '/admin/accounts-5-plus', color: 'purple', countKey: 'accounts5Plus' },
   { id: 'new-accounts', label: 'Nuevas Cuentas', icon: Zap, href: '/admin/new-accounts', color: 'pink', countKey: 'newAccounts' },
   { id: 'scanner', label: 'Scanner', icon: Scan, href: '/admin/scanner', color: 'indigo' },
+  { id: 'downloads', label: 'Descargas', icon: Download, href: '/admin/downloads', color: 'teal' },
   { id: 'search', label: 'Buscar', icon: Search, href: '/admin/search', color: 'slate' },
   { id: 'settings', label: 'Configuración', icon: Settings, href: '/admin/settings', color: 'gray' },
 ];
@@ -53,6 +54,7 @@ const colorClasses = {
   purple: 'from-purple-500 to-purple-600',
   pink: 'from-pink-500 to-pink-600',
   indigo: 'from-indigo-500 to-indigo-600',
+  teal: 'from-teal-500 to-teal-600',
   slate: 'from-slate-500 to-slate-600',
   gray: 'from-gray-500 to-gray-600',
 };

@@ -58,11 +58,14 @@ export const memberHistory = pgTable("member_history", {
   currentBalanceDollars: text("current_balance_dollars"),
   lastActivityDate: text("last_activity_date"),
   emailAddress: text("email_address"),
+  zipCode: text("zip_code"),
   memberData: json("member_data"),
   lastAccessedAt: timestamp("last_accessed_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
   markedAsUsed: boolean("marked_as_used").default(false),
   markedAsUsedAt: timestamp("marked_as_used_at"),
+  downloaded: boolean("downloaded").default(false),
+  downloadedAt: timestamp("downloaded_at"),
 });
 
 // Bulk verification jobs for background processing

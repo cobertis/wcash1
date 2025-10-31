@@ -4866,5 +4866,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========================================
+  // DOWNLOADS SYSTEM ROUTES
+  // ========================================
+
+  // 1. GET /api/downloads/accounts - Get accounts with filters
+  app.get("/api/downloads/accounts", async (req, res) => {
+    try {
+      const filters = {
+        downloaded: req.query.downloaded === "true" ? true : req.query.downloaded === "false" ? false : undefined,
+        zipCode: req.query.zipCode as string | undefined,
+        minBalance: req.query.minBalance ? parseFloat(req.query.minBalance as string) : undefined,
+        dateFrom: req.query.dateFrom as string | undefined,
+        dateTo: req.query.dateTo as string | undefined,
+        page: req.query.page ? parseInt(req.query.page as string) : 1,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
+      };
+
+      const result = await storage.getAccountsWithFilters(filters);
+      
+      console.log(`📊 DOWNLOADS: Fetched ${result.accounts.length} accounts (${result.total} total)`);
+      
+      res.json(result);
+    } catch (error) {
+      console.error("❌ DOWNLOADS GET ACCOUNTS ERROR:", error);
+      res.status(500).json({
+        error: "Failed to get accounts",
+        message: (error as Error).message
+      });
+    }
+  });
+
+  // 2. POST /api/downloads/mark-downloaded - Mark accounts as downloaded
+  app.post("/api/downloads/mark-downloaded", async (req, res) => {
+    try {
+      const { accountIds } = req.body;
+      
+      if (!Array.isArray(accountIds) || accountIds.length === 0) {
+        return res.status(400).json({
+          error: "accountIds must be a non-empty array"
+        });
+      }
+
+      await storage.markAccountsAsDownloaded(accountIds);
+      
+      console.log(`✅ DOWNLOADS: Marked ${accountIds.length} accounts as downloaded`);
+      
+      res.json({
+        success: true,
+        count: accountIds.length
+      });
+    } catch (error) {
+      console.error("❌ DOWNLOADS MARK DOWNLOADED ERROR:", error);
+      res.status(500).json({
+        error: "Failed to mark accounts as downloaded",
+        message: (error as Error).message
+      });
+    }
+  });
+
   return httpServer;
 }

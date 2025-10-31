@@ -69,6 +69,7 @@ import { useLocation } from "wouter";
 import { JobExecutionHistory } from "./job-execution-history";
 import BalanceRewardsSimple from "./balance-rewards-simple";
 import Scanner from "@/pages/Scanner";
+import Downloads from "@/pages/Downloads";
 
 // Auto-Reset Status Component
 function AutoResetStatus() {
@@ -5561,6 +5562,9 @@ export default function ControlPanel() {
         return renderSettingsContent();
       case 'scanner':
         return <Scanner />;
+
+      case 'downloads':
+        return <Downloads />;
 
       default:
         return renderDashboardContent();

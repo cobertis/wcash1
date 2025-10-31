@@ -213,6 +213,18 @@ export interface IStorage {
   createScanSession(): Promise<ScanSession>;
   updateScanSession(id: number, data: Partial<ScanSession>): Promise<void>;
   getActiveScanSession(): Promise<ScanSession | null>;
+  
+  // Downloads system operations
+  getAccountsWithFilters(filters: {
+    downloaded?: boolean;
+    zipCode?: string;
+    minBalance?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ accounts: MemberHistory[]; total: number }>;
+  markAccountsAsDownloaded(accountIds: number[]): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -736,6 +748,27 @@ export class MemStorage implements IStorage {
   }
   async getActiveScanSession(): Promise<ScanSession | null> {
     return null;
+  }
+  
+  // Downloads system operations stubs
+  async getAccountsWithFilters(filters: {
+    downloaded?: boolean;
+    zipCode?: string;
+    minBalance?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ accounts: MemberHistory[]; total: number }> {
+    // Stub implementation - returns empty results
+    // System uses DatabaseStorage in production
+    return { accounts: [], total: 0 };
+  }
+  
+  async markAccountsAsDownloaded(accountIds: number[]): Promise<void> {
+    // Stub implementation - does nothing
+    // System uses DatabaseStorage in production
+    return;
   }
 }
 
@@ -2112,6 +2145,83 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     
     return session || null;
+  }
+  
+  // Downloads system operations
+  async getAccountsWithFilters(filters: {
+    downloaded?: boolean;
+    zipCode?: string;
+    minBalance?: number;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ accounts: MemberHistory[]; total: number }> {
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+    const offset = (page - 1) * limit;
+    
+    // Build WHERE conditions
+    const conditions = [];
+    
+    // Filter by downloaded status
+    if (filters.downloaded !== undefined) {
+      conditions.push(eq(memberHistory.downloaded, filters.downloaded));
+    }
+    
+    // Filter by zip code
+    if (filters.zipCode) {
+      conditions.push(eq(memberHistory.zipCode, filters.zipCode));
+    }
+    
+    // Filter by minimum balance
+    if (filters.minBalance !== undefined) {
+      const minBalanceCents = Math.floor(filters.minBalance * 100);
+      conditions.push(gte(memberHistory.currentBalance, minBalanceCents));
+    }
+    
+    // Filter by date range
+    if (filters.dateFrom) {
+      conditions.push(gte(memberHistory.createdAt, new Date(filters.dateFrom)));
+    }
+    if (filters.dateTo) {
+      const dateTo = new Date(filters.dateTo);
+      dateTo.setHours(23, 59, 59, 999); // End of day
+      conditions.push(lte(memberHistory.createdAt, dateTo));
+    }
+    
+    // Get total count
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(memberHistory)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+    
+    const total = Number(countResult?.count || 0);
+    
+    // Get accounts with pagination
+    const accounts = await db
+      .select()
+      .from(memberHistory)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(memberHistory.currentBalance), desc(memberHistory.createdAt))
+      .limit(limit)
+      .offset(offset);
+    
+    return { accounts, total };
+  }
+  
+  async markAccountsAsDownloaded(accountIds: number[]): Promise<void> {
+    if (accountIds.length === 0) return;
+    
+    await db
+      .update(memberHistory)
+      .set({
+        downloaded: true,
+        downloadedAt: new Date(),
+      })
+      .where(inArray(memberHistory.id, accountIds));
+    
+    console.log(`✅ Marked ${accountIds.length} accounts as downloaded`);
   }
 }
 
