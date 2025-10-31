@@ -218,6 +218,7 @@ export interface IStorage {
   getAccountsWithFilters(filters: {
     downloaded?: boolean;
     zipCode?: string;
+    state?: string;
     minBalance?: number;
     dateFrom?: string;
     dateTo?: string;
@@ -754,6 +755,7 @@ export class MemStorage implements IStorage {
   async getAccountsWithFilters(filters: {
     downloaded?: boolean;
     zipCode?: string;
+    state?: string;
     minBalance?: number;
     dateFrom?: string;
     dateTo?: string;
