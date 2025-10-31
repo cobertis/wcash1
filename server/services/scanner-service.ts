@@ -518,6 +518,11 @@ export class ScannerService {
           currentBalanceDollars = memberDetailsAny.CurrentBalanceDollars;
         }
         
+        // Extract ZIP code and calculate state
+        const zipCode = profile.zipCode || null;
+        const state = zipCode ? (await import('../storage')).zipCodeToState(zipCode) : null;
+        const emailAddress = profile.email || null;
+        
         const scanResult: InsertScanResult = {
           phoneNumber,
           memberName: memberDetails.name || `${profile.firstName} ${profile.lastName}`.trim(),
@@ -525,7 +530,9 @@ export class ScannerService {
           currentBalance: currentBalance,
           currentBalanceDollars: currentBalanceDollars,
           lastActivityDate: memberDetails.profile?.Reward?.LastActivityDate || null,
-          zipCode: profile.zipCode || null,
+          zipCode: zipCode,
+          state: state,
+          emailAddress: emailAddress,
           fileId: queueItem.fileId || undefined,
           sessionId: this.currentSession?.id
         };

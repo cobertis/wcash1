@@ -367,6 +367,7 @@ export const scanResults = pgTable("scan_results", {
   lastActivityDate: text("last_activity_date"),
   zipCode: text("zip_code"),
   state: text("state"),
+  emailAddress: text("email_address"),
   fileId: integer("file_id").references(() => scanFiles.id),
   sessionId: integer("session_id").references(() => scanSessions.id),
   scannedAt: timestamp("scanned_at").defaultNow(),

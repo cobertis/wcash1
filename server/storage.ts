@@ -2030,6 +2030,7 @@ export class DatabaseStorage implements IStorage {
             lastActivityDate: result.lastActivityDate,
             zipCode: result.zipCode,
             state: state,
+            emailAddress: result.emailAddress,
             fileId: result.fileId,
             sessionId: result.sessionId,
             scannedAt: new Date()
@@ -2047,6 +2048,7 @@ export class DatabaseStorage implements IStorage {
           lastActivityDate: result.lastActivityDate || null,
           zipCode: zipCode,
           state: state,
+          emailAddress: result.emailAddress || null,
           isMarked: false,
           markedAt: null
         })
@@ -2060,6 +2062,7 @@ export class DatabaseStorage implements IStorage {
             lastActivityDate: result.lastActivityDate || null,
             zipCode: zipCode,
             state: state,
+            emailAddress: result.emailAddress || null,
             updatedAt: new Date()
           }
         });
