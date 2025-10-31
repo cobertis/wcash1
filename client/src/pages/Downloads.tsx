@@ -167,7 +167,7 @@ export default function Downloads() {
           acc.currentBalanceDollars || "0.00",
           zipCode,
           state,
-          "", // Email could be added if available
+          acc.emailAddress || "", // FIXED: Include email from account data
           "Sí", // Will be marked as downloaded
           new Date().toLocaleDateString(), // Current date as download date
         ];

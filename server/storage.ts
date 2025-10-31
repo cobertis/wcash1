@@ -214,27 +214,8 @@ export interface IStorage {
   // Duplicate cleanup operations
   cleanupDuplicates(): Promise<number>;
   
-  // Phone numbers queue operations
-  getPhoneNumbersQueue(status?: 'pending' | 'valid' | 'invalid', page?: number, size?: number): Promise<PhoneNumbersQueue[]>;
-  getPhoneNumbersQueueCount(status?: 'pending' | 'valid' | 'invalid'): Promise<number>;
-  addPhoneNumbersToQueue(phoneNumbers: string[]): Promise<PhoneNumbersQueue[]>;
-  addPhoneNumbersToQueueBatch(phoneNumbers: string[], batchSize?: number): Promise<{
-    processed: number;
-    added: number;
-    skipped: number;
-    total: number;
-  }>;
-  updatePhoneNumberStatus(phoneNumber: string, status: 'valid' | 'invalid', memberData?: any, errorMessage?: string): Promise<PhoneNumbersQueue | undefined>;
-  getPendingPhoneNumbers(limit?: number): Promise<PhoneNumbersQueue[]>;
-  getValidPhoneNumbers(limit?: number): Promise<PhoneNumbersQueue[]>;
-  resetRecentProcessedNumbers(count: number): Promise<number>;
-  getPhoneNumbersQueueStats(): Promise<{
-    total: number;
-    pending: number;
-    valid: number;
-    invalid: number;
-  }>;
-  clearPhoneNumberQueue(): Promise<void>;
+  // Phone numbers queue operations (DEPRECATED - replaced by Scanner system)
+  // These methods are kept for backward compatibility but should not be used in new code
   
   // Member marking operations
   markMemberAsUsed(phoneNumber: string): Promise<void>;
@@ -244,9 +225,6 @@ export interface IStorage {
   
   // Background scanner operations
   getAllPhoneNumbers(): Promise<string[]>;
-  
-  // Phone numbers queue cleanup operations
-  cleanPhoneNumbersQueue(existingPhones: string[]): Promise<number>;
   
   // Bulk verification job operations
   saveBulkVerificationJob(job: any): Promise<void>;
@@ -560,11 +538,15 @@ export class MemStorage implements IStorage {
       currentBalanceDollars: insertMemberHistory.currentBalanceDollars ?? null,
       lastActivityDate: insertMemberHistory.lastActivityDate ?? null,
       emailAddress: insertMemberHistory.emailAddress ?? null,
+      zipCode: insertMemberHistory.zipCode ?? null,
+      state: insertMemberHistory.state ?? null,
       memberData: insertMemberHistory.memberData ?? null,
       lastAccessedAt: new Date(),
       createdAt: new Date(),
       markedAsUsed: insertMemberHistory.markedAsUsed ?? false,
       markedAsUsedAt: insertMemberHistory.markedAsUsedAt ?? null,
+      downloaded: insertMemberHistory.downloaded ?? false,
+      downloadedAt: insertMemberHistory.downloadedAt ?? null,
     };
     this.memberHistoryMap.set(memberHistory.phoneNumber, memberHistory);
     return memberHistory;
@@ -595,11 +577,15 @@ export class MemStorage implements IStorage {
       currentBalanceDollars: memberData.Reward?.CurrentBalanceDollars?.toString() || "0.00",
       lastActivityDate: memberData.Reward?.LastActivityDate || null,
       emailAddress: memberData.Email?.EMailAddress || null,
+      zipCode: null,
+      state: null,
       memberData,
       lastAccessedAt: new Date(),
       createdAt: new Date(),
       markedAsUsed: false,
       markedAsUsedAt: null,
+      downloaded: false,
+      downloadedAt: null,
     };
     this.memberHistoryMap.set(phoneNumber, newHistory);
     return newHistory;
@@ -694,16 +680,7 @@ export class MemStorage implements IStorage {
   async createJobResultsDetail(): Promise<JobResultsDetail> { throw new Error('Not implemented'); }
   async createManyJobResultsDetail(): Promise<JobResultsDetail[]> { throw new Error('Not implemented'); }
   async cleanupDuplicates(): Promise<number> { return 0; }
-  async getPhoneNumbersQueue(): Promise<PhoneNumbersQueue[]> { return []; }
-  async getPhoneNumbersQueueCount(): Promise<number> { return 0; }
-  async addPhoneNumbersToQueue(): Promise<PhoneNumbersQueue[]> { return []; }
-  async addPhoneNumbersToQueueBatch(): Promise<any> { return { processed: 0, added: 0, skipped: 0, total: 0 }; }
-  async updatePhoneNumberStatus(phoneNumber: string, status: 'valid' | 'invalid' | 'processed', memberData?: any, errorMessage?: string): Promise<PhoneNumbersQueue | undefined> { return undefined; }
-  async getPendingPhoneNumbers(): Promise<PhoneNumbersQueue[]> { return []; }
-  async getValidPhoneNumbers(): Promise<PhoneNumbersQueue[]> { return []; }
-  async resetRecentProcessedNumbers(count: number): Promise<number> { return 0; }
-  async getPhoneNumbersQueueStats(): Promise<any> { return { total: 0, pending: 0, valid: 0, invalid: 0 }; }
-  async clearPhoneNumberQueue(): Promise<void> { return; }
+  // PhoneNumbersQueue methods removed - replaced by Scanner system
   
   // API Key Pool methods
   async getAllApiKeys(): Promise<ApiKeyPool[]> { return Array.from(this.apiKeys.values()); }
@@ -761,9 +738,8 @@ export class MemStorage implements IStorage {
         apiKey: apiKey.trim(),
         affId: affId.trim(),
         requestCount: 0,
-        maxRequests: 300,
-        lastResetTime: null,
         isActive: true,
+        lastResetTime: new Date(),
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -1661,175 +1637,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // Phone numbers queue operations
-  async getPhoneNumbersQueue(status?: 'pending' | 'valid' | 'invalid', page = 1, size = 25): Promise<PhoneNumbersQueue[]> {
-    const offset = (page - 1) * size;
-    
-    if (status) {
-      return await db.select().from(phoneNumbersQueue)
-        .where(eq(phoneNumbersQueue.status, status))
-        .orderBy(desc(phoneNumbersQueue.createdAt))
-        .limit(size)
-        .offset(offset);
-    }
-    
-    return await db.select().from(phoneNumbersQueue)
-      .orderBy(desc(phoneNumbersQueue.createdAt))
-      .limit(size)
-      .offset(offset);
-  }
-
-  async getPhoneNumbersQueueCount(status?: 'pending' | 'valid' | 'invalid'): Promise<number> {
-    if (status) {
-      const result = await db.select({ count: sql<number>`count(*)` }).from(phoneNumbersQueue)
-        .where(eq(phoneNumbersQueue.status, status));
-      return result[0].count;
-    }
-    
-    const result = await db.select({ count: sql<number>`count(*)` }).from(phoneNumbersQueue);
-    return result[0].count;
-  }
-
-  async addPhoneNumbersToQueue(phoneNumbers: string[]): Promise<PhoneNumbersQueue[]> {
-    const uniqueNumbers = [...new Set(phoneNumbers)]; // Remove duplicates
-    const results: PhoneNumbersQueue[] = [];
-    
-    for (const phoneNumber of uniqueNumbers) {
-      try {
-        const [existing] = await db.select().from(phoneNumbersQueue)
-          .where(eq(phoneNumbersQueue.phoneNumber, phoneNumber));
-        
-        if (!existing) {
-          const [inserted] = await db.insert(phoneNumbersQueue)
-            .values({ phoneNumber })
-            .returning();
-          results.push(inserted);
-        } else {
-          results.push(existing);
-        }
-      } catch (error) {
-        // Handle duplicate key error - just skip
-        console.log(`Phone number ${phoneNumber} already exists in queue`);
-      }
-    }
-    
-    return results;
-  }
-
-  async addPhoneNumbersToQueueBatch(phoneNumbers: string[], batchSize: number = 100): Promise<{
-    processed: number;
-    added: number;
-    skipped: number;
-    total: number;
-  }> {
-    const uniqueNumbers = [...new Set(phoneNumbers)]; // Remove duplicates
-    const totalNumbers = uniqueNumbers.length;
-    let processed = 0;
-    let added = 0;
-    let skipped = 0;
-    
-    // Process in batches
-    for (let i = 0; i < uniqueNumbers.length; i += batchSize) {
-      const batch = uniqueNumbers.slice(i, i + batchSize);
-      
-      // Process batch
-      const batchInserts = [];
-      for (const phoneNumber of batch) {
-        try {
-          const [existing] = await db.select().from(phoneNumbersQueue)
-            .where(eq(phoneNumbersQueue.phoneNumber, phoneNumber));
-          
-          if (!existing) {
-            batchInserts.push({ phoneNumber });
-          } else {
-            skipped++;
-          }
-        } catch (error) {
-          console.log(`Error checking phone number ${phoneNumber}:`, error);
-          skipped++;
-        }
-      }
-      
-      // Bulk insert new numbers
-      if (batchInserts.length > 0) {
-        try {
-          await db.insert(phoneNumbersQueue).values(batchInserts);
-          added += batchInserts.length;
-        } catch (error) {
-          console.error('Batch insert error:', error);
-          // Try individual inserts as fallback
-          for (const item of batchInserts) {
-            try {
-              await db.insert(phoneNumbersQueue).values(item);
-              added++;
-            } catch (individualError) {
-              console.log(`Individual insert failed for ${item.phoneNumber}:`, individualError);
-              skipped++;
-            }
-          }
-        }
-      }
-      
-      processed += batch.length;
-    }
-    
-    return {
-      processed,
-      added,
-      skipped,
-      total: totalNumbers
-    };
-  }
-
-  async updatePhoneNumberStatus(phoneNumber: string, status: 'valid' | 'invalid' | 'processed', memberData?: any, errorMessage?: string): Promise<PhoneNumbersQueue | undefined> {
-    const [updated] = await db.update(phoneNumbersQueue)
-      .set({
-        status,
-        verifiedAt: new Date(),
-        memberData,
-        errorMessage,
-        updatedAt: new Date()
-      })
-      .where(eq(phoneNumbersQueue.phoneNumber, phoneNumber))
-      .returning();
-    
-    return updated;
-  }
-
-  async getPendingPhoneNumbers(limit = 100): Promise<PhoneNumbersQueue[]> {
-    return await db.select().from(phoneNumbersQueue)
-      .where(eq(phoneNumbersQueue.status, 'pending'))
-      .orderBy(asc(phoneNumbersQueue.createdAt))
-      .limit(limit);
-  }
-
-  async getValidPhoneNumbers(limit = 1000): Promise<PhoneNumbersQueue[]> {
-    return await db.select().from(phoneNumbersQueue)
-      .where(eq(phoneNumbersQueue.status, 'valid'))
-      .limit(limit);
-  }
-
-  async getPhoneNumbersQueueStats(): Promise<{
-    total: number;
-    pending: number;
-    valid: number;
-    invalid: number;
-  }> {
-    const [totalResult] = await db.select({ count: sql<number>`count(*)` }).from(phoneNumbersQueue);
-    const [pendingResult] = await db.select({ count: sql<number>`count(*)` }).from(phoneNumbersQueue)
-      .where(eq(phoneNumbersQueue.status, 'pending'));
-    const [validResult] = await db.select({ count: sql<number>`count(*)` }).from(phoneNumbersQueue)
-      .where(eq(phoneNumbersQueue.status, 'valid'));
-    const [invalidResult] = await db.select({ count: sql<number>`count(*)` }).from(phoneNumbersQueue)
-      .where(eq(phoneNumbersQueue.status, 'invalid'));
-    
-    return {
-      total: totalResult.count,
-      pending: pendingResult.count,
-      valid: validResult.count,
-      invalid: invalidResult.count
-    };
-  }
+  // Phone numbers queue operations - REMOVED (replaced by Scanner system)
 
   async getAllPhoneNumbers(): Promise<string[]> {
     const memberHistoryPhones = await db.select({ phoneNumber: memberHistory.phoneNumber }).from(memberHistory);
@@ -1844,63 +1652,7 @@ export class DatabaseStorage implements IStorage {
     return [...new Set(allPhones)];
   }
 
-  async cleanPhoneNumbersQueue(existingPhones: string[]): Promise<number> {
-    if (existingPhones.length === 0) return 0;
-    
-    const result = await db.delete(phoneNumbersQueue)
-      .where(inArray(phoneNumbersQueue.phoneNumber, existingPhones));
-    
-    return result.rowCount || 0;
-  }
-
-  async clearPhoneNumberQueue(): Promise<void> {
-    await db.delete(phoneNumbersQueue);
-    console.log('✅ Phone number queue cleared');
-  }
-
-  async resetProcessedNumbers(): Promise<number> {
-    // Resetear todos los números procesados a pending para reprocesarlos
-    const result = await db.update(phoneNumbersQueue)
-      .set({
-        status: 'pending',
-        verifiedAt: null,
-        memberData: null,
-        errorMessage: null,
-        updatedAt: new Date()
-      })
-      .where(eq(phoneNumbersQueue.status, 'processed'));
-    
-    console.log(`✅ Reset ${result.rowCount} números procesados a pendientes`);
-    return result.rowCount || 0;
-  }
-
-  async resetRecentProcessedNumbers(count: number): Promise<number> {
-    // Resetear los últimos X números procesados (que tuvieron errores) a pending
-    const recentProcessed = await db.select().from(phoneNumbersQueue)
-      .where(or(eq(phoneNumbersQueue.status, 'processed'), eq(phoneNumbersQueue.status, 'invalid')))
-      .orderBy(desc(phoneNumbersQueue.updatedAt))
-      .limit(count);
-    
-    if (recentProcessed.length === 0) {
-      console.log('⚠️ No hay números procesados recientes para resetear');
-      return 0;
-    }
-    
-    const phoneNumbers = recentProcessed.map(r => r.phoneNumber);
-    
-    const result = await db.update(phoneNumbersQueue)
-      .set({
-        status: 'pending',
-        verifiedAt: null,
-        memberData: null,
-        errorMessage: null,
-        updatedAt: new Date()
-      })
-      .where(inArray(phoneNumbersQueue.phoneNumber, phoneNumbers));
-    
-    console.log(`✅ Reset ${result.rowCount} números recientes a pendientes para reprocesamiento`);
-    return result.rowCount || 0;
-  }
+  // cleanPhoneNumbersQueue, clearPhoneNumberQueue, resetProcessedNumbers - REMOVED (Scanner system replacement)
 
   // Balance Rewards operations
   async createBalanceRewardsActivity(activity: InsertBalanceRewardsActivity): Promise<BalanceRewardsActivity> {
