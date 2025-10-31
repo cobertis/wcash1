@@ -27,6 +27,7 @@ interface Account {
   memberName: string | null;
   cardNumber: string | null;
   currentBalanceDollars: string | null;
+  emailAddress: string | null;
   zipCode: string | null;
   downloaded: boolean;
   downloadedAt: string | null;
@@ -313,9 +314,9 @@ export default function Downloads() {
             <div className="space-y-2">
               <Label htmlFor="state">Estado</Label>
               <Select
-                value={filters.state}
+                value={filters.state || "all"}
                 onValueChange={(value: string) => {
-                  setFilters({ ...filters, state: value });
+                  setFilters({ ...filters, state: value === "all" ? "" : value });
                   setPage(1);
                 }}
               >
@@ -323,7 +324,7 @@ export default function Downloads() {
                   <SelectValue placeholder="Todos los estados" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los estados</SelectItem>
+                  <SelectItem value="all">Todos los estados</SelectItem>
                   {(statesData?.states || []).map((state: string) => (
                     <SelectItem key={state} value={state}>
                       {state}

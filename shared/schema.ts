@@ -59,6 +59,7 @@ export const memberHistory = pgTable("member_history", {
   lastActivityDate: text("last_activity_date"),
   emailAddress: text("email_address"),
   zipCode: text("zip_code"),
+  state: text("state"),
   memberData: json("member_data"),
   lastAccessedAt: timestamp("last_accessed_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
