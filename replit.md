@@ -47,6 +47,18 @@ Mobile-first design: Application must be fully optimized for mobile devices as i
   - Duplicate prevention and automatic resumption on server restart.
   - Automatic addition of valid accounts to member history and dashboard updates.
   - CSV export of valid accounts.
+- **Backfill Service**: Automated system to enrich ALL accounts with complete location and contact data.
+  - Processes all 79,631+ accounts (prioritizes highest balance first)
+  - Extracts and saves ZIP code, state, AND email for every account
+  - Uses full API key pool (7 keys) with 30 parallel workers for maximum throughput
+  - Resumable: Automatically continues from last position after server restart
+  - Real-time progress tracking with estimated completion time
+  - Zero data loss: Updates database directly with ZIP + state + email fields
+- **Downloads & Data Export**: Complete CSV export with comprehensive account information.
+  - Exports Phone, Name, Card, Balance, ZIP Code, State, Email, Downloaded status, and Download Date
+  - All data sourced directly from database (no client-side calculations)
+  - Supports filtering by balance ranges and search
+  - Marks exported accounts with download timestamp
 - **Comprehensive Offers Management**: Fetch, search, clip, and track offers with real-time API data.
 - **Store Locator & Assignment**: Search for stores, view details, assign preferred store.
 - **Store Inventory**: Real-time stock levels, product search, barcode scanner integration.
