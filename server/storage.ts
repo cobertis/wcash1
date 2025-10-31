@@ -301,6 +301,7 @@ export interface IStorage {
   updateMemberZipStateEmail(phoneNumber: string, zipCode: string, state: string, email: string): Promise<void>;
   getAllAccountsForBackfill(limit: number, offset: number): Promise<MemberHistory[]>;
   getAllAccountsForBackfillCount(): Promise<number>;
+  getAccountsWithoutZipOrState(): Promise<MemberHistory[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -902,6 +903,10 @@ export class MemStorage implements IStorage {
   
   async getAllAccountsForBackfillCount(): Promise<number> {
     return 0;
+  }
+  
+  async getAccountsWithoutZipOrState(): Promise<MemberHistory[]> {
+    return [];
   }
 }
 
@@ -2378,6 +2383,19 @@ export class DatabaseStorage implements IStorage {
     const result = await db.select({ count: sql<number>`count(*)::int` })
       .from(memberHistory);
     return result[0]?.count || 0;
+  }
+  
+  async getAccountsWithoutZipOrState(): Promise<MemberHistory[]> {
+    const result = await db.select()
+      .from(memberHistory)
+      .where(or(
+        eq(memberHistory.zipCode, ''),
+        sql`${memberHistory.zipCode} IS NULL`,
+        eq(memberHistory.state, ''),
+        sql`${memberHistory.state} IS NULL`
+      ))
+      .orderBy(desc(memberHistory.currentBalance));
+    return result;
   }
 }
 

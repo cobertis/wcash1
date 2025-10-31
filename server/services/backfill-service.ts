@@ -437,4 +437,120 @@ export class BackfillService {
       estimatedTimeRemaining: estimatedSeconds
     };
   }
+
+  /**
+   * Retry failed accounts - Process only accounts without ZIP or state
+   */
+  async retryFailed(): Promise<void> {
+    if (this.isRunning) {
+      console.log('⚠️ Cannot retry failed accounts while backfill is running');
+      throw new Error('Backfill is already running');
+    }
+
+    console.log('🔄 Starting retry of failed accounts...');
+    
+    // Initialize abort controller
+    this.abortController = new AbortController();
+    
+    // Initialize RateLimiterManager with API keys
+    const rateLimiter = RateLimiterManager.getInstance();
+    rateLimiter.initialize(this.apiKeys, 250); // 250 req/min per key
+    
+    // Get accounts without ZIP or state (failed accounts)
+    const failedAccounts = await storage.getAccountsWithoutZipOrState();
+    
+    console.log(`📊 Found ${failedAccounts.length} accounts to retry`);
+    
+    if (failedAccounts.length === 0) {
+      console.log('✅ No failed accounts to retry');
+      return;
+    }
+    
+    // Create a retry job
+    this.currentJob = await storage.createBackfillJob({
+      status: 'running',
+      totalAccounts: failedAccounts.length,
+      processedAccounts: 0,
+      updatedAccounts: 0,
+      failedAccounts: 0,
+      startedAt: new Date()
+    });
+    
+    // Reset counters
+    this.processedCount = 0;
+    this.updatedCount = 0;
+    this.failedCount = 0;
+    this.currentOffset = 0;
+    this.startTime = Date.now();
+    this.isRunning = true;
+    
+    // Process failed accounts
+    try {
+      const accountQueue = [...failedAccounts];
+      const workers = [];
+      
+      for (let i = 0; i < this.WORKER_COUNT; i++) {
+        workers.push(this.retryWorker(i, accountQueue, rateLimiter));
+      }
+      
+      await Promise.all(workers);
+      
+      // Complete job
+      await this.complete();
+      
+    } catch (error) {
+      console.error('❌ Retry failed accounts error:', error);
+      
+      if (this.currentJob) {
+        await storage.updateBackfillJob(this.currentJob.id, {
+          status: 'failed',
+          errorMessage: (error as Error).message,
+          processedAccounts: this.processedCount,
+          updatedAccounts: this.updatedCount,
+          failedAccounts: this.failedCount,
+          completedAt: new Date()
+        });
+      }
+      
+      throw error;
+      
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
+  /**
+   * Worker for retry process
+   */
+  private async retryWorker(
+    workerIndex: number,
+    accountQueue: MemberHistory[],
+    rateLimiter: RateLimiterManager
+  ): Promise<void> {
+    while (accountQueue.length > 0 && !this.abortController?.signal.aborted) {
+      const account = accountQueue.shift();
+      if (!account) break;
+      
+      const apiKey = await rateLimiter.acquireToken();
+      
+      try {
+        await this.processAccount(account, apiKey);
+      } catch (error) {
+        console.error(`❌ Retry worker ${workerIndex} error processing ${account.phoneNumber}:`, error);
+        this.failedCount++;
+      }
+      
+      this.processedCount++;
+      
+      // Update progress every 10 accounts
+      if (this.processedCount % 10 === 0) {
+        await storage.updateBackfillJob(this.currentJob!.id, {
+          currentPhone: account.phoneNumber,
+          processedAccounts: this.processedCount,
+          updatedAccounts: this.updatedCount,
+          failedAccounts: this.failedCount
+        });
+      }
+    }
+  }
 }

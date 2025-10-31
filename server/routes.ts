@@ -5202,5 +5202,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 5. POST /api/admin/backfill/retry-failed - Retry failed accounts
+  app.post("/api/admin/backfill/retry-failed", async (req, res) => {
+    try {
+      console.log("🔄 BACKFILL RETRY: Retrying failed accounts...");
+      
+      const backfillService = BackfillService.getInstance();
+      await backfillService.retryFailed();
+      
+      console.log("✅ Retry started successfully");
+      
+      res.json({
+        success: true,
+        message: "Retry of failed accounts started successfully"
+      });
+      
+    } catch (error) {
+      console.error("❌ BACKFILL RETRY ERROR:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to retry failed accounts",
+        message: (error as Error).message
+      });
+    }
+  });
+
   return httpServer;
 }
