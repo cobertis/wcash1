@@ -144,6 +144,11 @@ export class BackfillService {
     this.startTime = Date.now();
     this.isRunning = true;
     
+    // Reset offset when starting new job (not resuming)
+    if (this.processedCount === 0) {
+      this.currentOffset = 0;
+    }
+    
     // Start the backfill loop
     this.backfillLoop().catch(error => {
       console.error('❌ Backfill loop error:', error);
