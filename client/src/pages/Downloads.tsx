@@ -356,9 +356,9 @@ export default function Downloads() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los estados</SelectItem>
-                  {(statesData?.states || []).map((state: string) => (
-                    <SelectItem key={state} value={state}>
-                      {state}
+                  {(statesData?.states || []).map((stateData: { state: string; count: number }) => (
+                    <SelectItem key={stateData.state} value={stateData.state}>
+                      {stateData.state} ({stateData.count.toLocaleString()})
                     </SelectItem>
                   ))}
                 </SelectContent>

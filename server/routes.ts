@@ -5011,12 +5011,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 3. GET /api/downloads/states - Get list of available states
+  // 3. GET /api/downloads/states - Get list of available states with counts
   app.get("/api/downloads/states", async (req, res) => {
     try {
-      const states = storage.getAvailableStates();
+      const states = await storage.getAvailableStates();
       
-      console.log(`📊 DOWNLOADS: Retrieved ${states.length} available states`);
+      console.log(`📊 DOWNLOADS: Retrieved ${states.length} states with account counts`);
       
       res.json({ states });
     } catch (error) {

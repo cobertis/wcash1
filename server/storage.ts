@@ -288,7 +288,7 @@ export interface IStorage {
     state?: string;
   }): Promise<number[]>;
   markAccountsAsDownloaded(accountIds: number[]): Promise<void>;
-  getAvailableStates(): string[];
+  getAvailableStates(): Promise<Array<{ state: string; count: number }>>;
   getZipToStateMapping(): Record<string, string>;
   
   // Backfill operations
@@ -856,9 +856,10 @@ export class MemStorage implements IStorage {
     return;
   }
   
-  getAvailableStates(): string[] {
-    const mapping = loadZipStateMapping();
-    return Object.keys(mapping.stateToZips).sort();
+  async getAvailableStates(): Promise<Array<{ state: string; count: number }>> {
+    // Stub implementation - returns empty array
+    // System uses DatabaseStorage in production
+    return [];
   }
   
   getZipToStateMapping(): Record<string, string> {
@@ -2258,9 +2259,22 @@ export class DatabaseStorage implements IStorage {
     console.log(`✅ Marked ${accountIds.length} accounts as downloaded`);
   }
   
-  getAvailableStates(): string[] {
-    const mapping = loadZipStateMapping();
-    return Object.keys(mapping.stateToZips).sort();
+  async getAvailableStates(): Promise<Array<{ state: string; count: number }>> {
+    // Get only states where we have accounts in the database, with counts
+    const result = await db
+      .select({ 
+        state: memberHistory.state,
+        count: sql<number>`count(*)::int`
+      })
+      .from(memberHistory)
+      .where(sql`${memberHistory.state} IS NOT NULL AND ${memberHistory.state} != ''`)
+      .groupBy(memberHistory.state)
+      .orderBy(memberHistory.state);
+    
+    return result.map(r => ({ 
+      state: r.state as string, 
+      count: r.count 
+    }));
   }
   
   getZipToStateMapping(): Record<string, string> {
