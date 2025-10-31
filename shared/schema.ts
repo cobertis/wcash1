@@ -138,7 +138,21 @@ export const apiKeyPool = pgTable("api_key_pool", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Removed couponAnalyses table (AI functionality removed)
+// Backfill jobs for ZIP code and state backfill
+export const backfillJobs = pgTable("backfill_jobs", {
+  id: serial("id").primaryKey(),
+  status: text("status").default("pending"), // pending, running, paused, completed, failed
+  totalAccounts: integer("total_accounts").default(0),
+  processedAccounts: integer("processed_accounts").default(0),
+  updatedAccounts: integer("updated_accounts").default(0),
+  failedAccounts: integer("failed_accounts").default(0),
+  currentPhone: text("current_phone"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
 
 export const insertMemberSchema = createInsertSchema(members);
 export const insertOfferSchema = createInsertSchema(offers);
@@ -149,8 +163,7 @@ export const insertBulkVerificationJobSchema = createInsertSchema(bulkVerificati
 export const insertJobExecutionHistorySchema = createInsertSchema(jobExecutionHistory);
 export const insertJobResultsDetailSchema = createInsertSchema(jobResultsDetail);
 export const insertApiKeyPoolSchema = createInsertSchema(apiKeyPool);
-
-// Removed couponAnalyses schema (AI functionality removed)
+export const insertBackfillJobSchema = createInsertSchema(backfillJobs);
 
 export type Member = typeof members.$inferSelect;
 export type InsertMember = z.infer<typeof insertMemberSchema>;
@@ -170,7 +183,8 @@ export type JobResultsDetail = typeof jobResultsDetail.$inferSelect;
 export type InsertJobResultsDetail = z.infer<typeof insertJobResultsDetailSchema>;
 export type ApiKeyPool = typeof apiKeyPool.$inferSelect;
 export type InsertApiKeyPool = z.infer<typeof insertApiKeyPoolSchema>;
-// Removed CouponAnalysis types (AI functionality removed)
+export type BackfillJob = typeof backfillJobs.$inferSelect;
+export type InsertBackfillJob = z.infer<typeof insertBackfillJobSchema>;
 
 // API Request/Response types
 export const lookupMemberSchema = z.object({

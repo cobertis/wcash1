@@ -11,6 +11,7 @@ import { db } from "./db";
 import { memberHistory, members, scanQueue, scanFiles, scanResults } from "@shared/schema";
 import { eq, desc, asc, sql, and, isNotNull, ne, gte, lt } from "drizzle-orm";
 import { ScannerService } from "./services/scanner-service";
+import { BackfillService } from "./services/backfill-service";
 import { z } from "zod";
 
 // Removed AI promotions service
@@ -5032,6 +5033,163 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("❌ DOWNLOADS GET ZIP-TO-STATE ERROR:", error);
       res.status(500).json({
         error: "Failed to get ZIP-to-state mapping",
+        message: (error as Error).message
+      });
+    }
+  });
+
+  // 5. GET /api/admin/downloads/all-ids - Get all account IDs matching filters (for Select All)
+  app.get("/api/admin/downloads/all-ids", async (req, res) => {
+    try {
+      const filters = {
+        downloaded: req.query.downloaded === "true" ? true : req.query.downloaded === "false" ? false : undefined,
+        zipCode: req.query.zipCode as string | undefined,
+        state: req.query.state as string | undefined,
+      };
+
+      // Get all IDs without pagination
+      const allIds = await storage.getAllAccountIdsWithFilters(filters);
+      
+      console.log(`📊 DOWNLOADS ALL IDS: Fetched ${allIds.length} account IDs matching filters`);
+      
+      res.json({ accountIds: allIds });
+    } catch (error) {
+      console.error("❌ DOWNLOADS GET ALL IDS ERROR:", error);
+      res.status(500).json({
+        error: "Failed to get all account IDs",
+        message: (error as Error).message
+      });
+    }
+  });
+
+  // 6. POST /api/admin/downloads/by-ids - Get specific accounts by their IDs
+  app.post("/api/admin/downloads/by-ids", async (req, res) => {
+    try {
+      const { accountIds } = req.body;
+      
+      if (!accountIds || !Array.isArray(accountIds) || accountIds.length === 0) {
+        return res.status(400).json({ error: "accountIds array is required" });
+      }
+
+      // Fetch accounts matching the IDs
+      const accounts = await db
+        .select()
+        .from(memberHistory)
+        .where(sql`${memberHistory.id} IN (${sql.join(accountIds.map((id: number) => sql`${id}`), sql`, `)})`)
+        .orderBy(desc(memberHistory.currentBalance), desc(memberHistory.createdAt));
+      
+      console.log(`📊 DOWNLOADS BY IDS: Fetched ${accounts.length} accounts from ${accountIds.length} requested IDs`);
+      
+      res.json({ accounts });
+    } catch (error) {
+      console.error("❌ DOWNLOADS GET BY IDS ERROR:", error);
+      res.status(500).json({
+        error: "Failed to get accounts by IDs",
+        message: (error as Error).message
+      });
+    }
+  });
+
+  // ==================== BACKFILL ROUTES ====================
+  // Backfill service to populate ZIP codes for all accounts
+  
+  // 1. POST /api/admin/backfill/start - Start backfill process
+  app.post("/api/admin/backfill/start", async (req, res) => {
+    try {
+      console.log("🚀 BACKFILL START: Starting ZIP code backfill process...");
+      
+      const backfillService = BackfillService.getInstance();
+      await backfillService.start();
+      
+      console.log("✅ Backfill started successfully");
+      
+      res.json({
+        success: true,
+        message: "ZIP code backfill started successfully"
+      });
+      
+    } catch (error) {
+      console.error("❌ BACKFILL START ERROR:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to start backfill",
+        message: (error as Error).message
+      });
+    }
+  });
+
+  // 2. GET /api/admin/backfill/status - Get backfill status
+  app.get("/api/admin/backfill/status", async (req, res) => {
+    try {
+      console.log("📊 BACKFILL STATUS: Fetching current backfill status...");
+      
+      const backfillService = BackfillService.getInstance();
+      const progress = backfillService.getProgress();
+      
+      console.log(`📊 Backfill Status:`, {
+        isRunning: progress.isRunning,
+        processed: progress.processedAccounts,
+        updated: progress.updatedAccounts,
+        failed: progress.failedAccounts,
+        total: progress.totalAccounts
+      });
+      
+      res.json(progress);
+      
+    } catch (error) {
+      console.error("❌ BACKFILL STATUS ERROR:", error);
+      res.status(500).json({
+        error: "Failed to fetch backfill status",
+        message: (error as Error).message
+      });
+    }
+  });
+
+  // 3. POST /api/admin/backfill/pause - Pause backfill
+  app.post("/api/admin/backfill/pause", async (req, res) => {
+    try {
+      console.log("⏸️ BACKFILL PAUSE: Pausing backfill process...");
+      
+      const backfillService = BackfillService.getInstance();
+      await backfillService.stop();
+      
+      console.log("✅ Backfill paused successfully");
+      
+      res.json({
+        success: true,
+        message: "Backfill paused successfully"
+      });
+      
+    } catch (error) {
+      console.error("❌ BACKFILL PAUSE ERROR:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to pause backfill",
+        message: (error as Error).message
+      });
+    }
+  });
+
+  // 4. POST /api/admin/backfill/resume - Resume paused backfill
+  app.post("/api/admin/backfill/resume", async (req, res) => {
+    try {
+      console.log("▶️ BACKFILL RESUME: Resuming backfill process...");
+      
+      const backfillService = BackfillService.getInstance();
+      await backfillService.resume();
+      
+      console.log("✅ Backfill resumed successfully");
+      
+      res.json({
+        success: true,
+        message: "Backfill resumed successfully"
+      });
+      
+    } catch (error) {
+      console.error("❌ BACKFILL RESUME ERROR:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to resume backfill",
         message: (error as Error).message
       });
     }

@@ -119,13 +119,8 @@ export default function Downloads() {
 
   // Download CSV with automatic marking as downloaded
   const downloadCSV = async () => {
-    // Filter accounts to download based on selection
-    const filteredAccounts = data?.accounts.filter((acc: Account) => 
-      selectedAccounts.has(acc.id)
-    ) || [];
-
     // Validate that we have accounts to export
-    if (filteredAccounts.length === 0) {
+    if (selectedAccounts.size === 0) {
       toast({
         title: "❌ Error",
         description: "No hay cuentas para exportar. Selecciona al menos una cuenta.",
@@ -135,6 +130,28 @@ export default function Downloads() {
     }
 
     try {
+      // Fetch ALL selected accounts from backend (not just current page)
+      const selectedIds = Array.from(selectedAccounts);
+      const response = await fetch("/api/admin/downloads/by-ids", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountIds: selectedIds }),
+      });
+      
+      if (!response.ok) throw new Error("Failed to fetch selected accounts");
+      
+      const result = await response.json();
+      const filteredAccounts = result.accounts;
+
+      if (!filteredAccounts || filteredAccounts.length === 0) {
+        toast({
+          title: "❌ Error",
+          description: "No se pudieron cargar las cuentas seleccionadas",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // STEP 1: Create CSV content with ZIP Code and State columns
       const zipToState = zipToStateData?.zipToState || {};
       const headers = ["Teléfono", "Nombre", "Tarjeta", "Balance", "Código Postal", "Estado", "Email", "Descargada", "Fecha Descarga"];
@@ -210,15 +227,48 @@ export default function Downloads() {
     setSelectedAccounts(newSelected);
   };
 
-  // Select all accounts on current page
-  const toggleSelectAll = () => {
+  // Select ALL accounts matching the filter (not just current page)
+  const toggleSelectAll = async () => {
     if (!data?.accounts) return;
     
-    const allSelected = data.accounts.every((acc: Account) => selectedAccounts.has(acc.id));
-    if (allSelected) {
+    // Check if all accounts on current page are selected
+    const allCurrentPageSelected = data.accounts.every((acc: Account) => selectedAccounts.has(acc.id));
+    
+    if (allCurrentPageSelected && selectedAccounts.size > 0) {
+      // Deselect all
       setSelectedAccounts(new Set());
     } else {
-      setSelectedAccounts(new Set(data.accounts.map((acc: Account) => acc.id)));
+      // Select ALL accounts matching filters (not just current page)
+      try {
+        const params = new URLSearchParams();
+        
+        if (filters.downloadStatus !== "all") {
+          params.append("downloaded", filters.downloadStatus === "downloaded" ? "true" : "false");
+        }
+        if (filters.zipCode) {
+          params.append("zipCode", filters.zipCode);
+        }
+        if (filters.state) {
+          params.append("state", filters.state);
+        }
+        
+        const response = await fetch(`/api/admin/downloads/all-ids?${params.toString()}`);
+        if (!response.ok) throw new Error("Failed to fetch all account IDs");
+        
+        const result = await response.json();
+        setSelectedAccounts(new Set(result.accountIds));
+        
+        toast({
+          title: "✅ Todos seleccionados",
+          description: `${result.accountIds.length} cuenta(s) seleccionadas`,
+        });
+      } catch (error) {
+        toast({
+          title: "❌ Error",
+          description: error instanceof Error ? error.message : "Error al seleccionar todas las cuentas",
+          variant: "destructive",
+        });
+      }
     }
   };
 

@@ -156,6 +156,16 @@ app.use((req, res, next) => {
       } catch (error) {
         console.error('❌ Failed to initialize auto-reset system:', error);
       }
+      
+      // Initialize BackfillService and check for incomplete jobs
+      try {
+        const { BackfillService } = await import('./services/backfill-service');
+        const backfillService = BackfillService.getInstance();
+        await backfillService.checkAndResume();
+        console.log('🔄 BackfillService initialized and ready');
+      } catch (error) {
+        console.error('❌ Failed to initialize BackfillService:', error);
+      }
     } else {
       console.log('🚀 Deployment mode: Skipping background jobs for faster startup');
     }

@@ -14,6 +14,7 @@ import {
   scanSessions,
   scanQueue,
   scanResults,
+  backfillJobs,
   type Member, 
   type InsertMember,
   type Offer,
@@ -41,7 +42,9 @@ import {
   type ScanQueue,
   type InsertScanQueue,
   type ScanResult,
-  type InsertScanResult
+  type InsertScanResult,
+  type BackfillJob,
+  type InsertBackfillJob
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, sql, inArray, gte, lte, lt, isNotNull, ne, or } from "drizzle-orm";
@@ -288,9 +291,22 @@ export interface IStorage {
     page?: number;
     limit?: number;
   }): Promise<{ accounts: MemberHistory[]; total: number }>;
+  getAllAccountIdsWithFilters(filters: {
+    downloaded?: boolean;
+    zipCode?: string;
+    state?: string;
+  }): Promise<number[]>;
   markAccountsAsDownloaded(accountIds: number[]): Promise<void>;
   getAvailableStates(): string[];
   getZipToStateMapping(): Record<string, string>;
+  
+  // Backfill operations
+  createBackfillJob(data: Partial<InsertBackfillJob>): Promise<BackfillJob>;
+  updateBackfillJob(id: number, data: Partial<BackfillJob>): Promise<void>;
+  getActiveBackfillJob(): Promise<BackfillJob | null>;
+  getAccountsWithoutZipCode(limit: number, offset: number): Promise<MemberHistory[]>;
+  getAccountsWithoutZipCodeCount(): Promise<number>;
+  updateMemberZipAndState(phoneNumber: string, zipCode: string, state: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -832,6 +848,16 @@ export class MemStorage implements IStorage {
     return { accounts: [], total: 0 };
   }
   
+  async getAllAccountIdsWithFilters(filters: {
+    downloaded?: boolean;
+    zipCode?: string;
+    state?: string;
+  }): Promise<number[]> {
+    // Stub implementation - returns empty array
+    // System uses DatabaseStorage in production
+    return [];
+  }
+  
   async markAccountsAsDownloaded(accountIds: number[]): Promise<void> {
     // Stub implementation - does nothing
     // System uses DatabaseStorage in production
@@ -846,6 +872,31 @@ export class MemStorage implements IStorage {
   getZipToStateMapping(): Record<string, string> {
     const mapping = loadZipStateMapping();
     return mapping.zipToState;
+  }
+  
+  // Backfill operations stubs
+  async createBackfillJob(data: Partial<InsertBackfillJob>): Promise<BackfillJob> {
+    throw new Error("Backfill not implemented in MemStorage");
+  }
+  
+  async updateBackfillJob(id: number, data: Partial<BackfillJob>): Promise<void> {
+    return;
+  }
+  
+  async getActiveBackfillJob(): Promise<BackfillJob | null> {
+    return null;
+  }
+  
+  async getAccountsWithoutZipCode(limit: number, offset: number): Promise<MemberHistory[]> {
+    return [];
+  }
+  
+  async getAccountsWithoutZipCodeCount(): Promise<number> {
+    return 0;
+  }
+  
+  async updateMemberZipAndState(phoneNumber: string, zipCode: string, state: string): Promise<void> {
+    return;
   }
 }
 
@@ -2362,6 +2413,57 @@ export class DatabaseStorage implements IStorage {
     return { accounts, total };
   }
   
+  async getAllAccountIdsWithFilters(filters: {
+    downloaded?: boolean;
+    zipCode?: string;
+    state?: string;
+  }): Promise<number[]> {
+    // Build WHERE conditions (same logic as getAccountsWithFilters)
+    const conditions = [];
+    
+    // Filter by downloaded status
+    if (filters.downloaded !== undefined) {
+      conditions.push(eq(memberHistory.downloaded, filters.downloaded));
+    }
+    
+    // Filter by zip code (exact match)
+    if (filters.zipCode) {
+      conditions.push(eq(memberHistory.zipCode, filters.zipCode));
+    }
+    
+    // Filter by state (using ZIP code list from mapping)
+    if (filters.state && !filters.zipCode) {
+      const mapping = loadZipStateMapping();
+      const stateZips = mapping.stateToZips[filters.state];
+      
+      if (stateZips && stateZips.length > 0) {
+        // Clean ZIP codes (remove suffix like -9740)
+        const cleanZips = stateZips.map(zip => zip.split('-')[0]);
+        
+        // Use SQL to extract first 5 digits from ZIP code for comparison
+        conditions.push(
+          sql`LEFT(COALESCE(${memberHistory.zipCode}, ''), 5) IN (${sql.join(
+            cleanZips.map(z => sql`${z}`), 
+            sql`, `
+          )})`
+        );
+        console.log(`🗺️ ALL IDS STATE FILTER: Filtering by state ${filters.state} (${cleanZips.length} ZIP codes)`);
+      } else {
+        // State not found, return empty results
+        console.warn(`⚠️ ALL IDS STATE FILTER: State ${filters.state} not found in mapping`);
+        return [];
+      }
+    }
+    
+    // Get all IDs matching the filters (no pagination)
+    const results = await db
+      .select({ id: memberHistory.id })
+      .from(memberHistory)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+    
+    return results.map(r => r.id);
+  }
+  
   async markAccountsAsDownloaded(accountIds: number[]): Promise<void> {
     if (accountIds.length === 0) return;
     
@@ -2384,6 +2486,79 @@ export class DatabaseStorage implements IStorage {
   getZipToStateMapping(): Record<string, string> {
     const mapping = loadZipStateMapping();
     return mapping.zipToState;
+  }
+  
+  // Backfill operations
+  async createBackfillJob(data: Partial<InsertBackfillJob>): Promise<BackfillJob> {
+    const [job] = await db.insert(backfillJobs).values({
+      status: data.status || 'pending',
+      totalAccounts: data.totalAccounts || 0,
+      processedAccounts: data.processedAccounts || 0,
+      updatedAccounts: data.updatedAccounts || 0,
+      failedAccounts: data.failedAccounts || 0,
+      currentPhone: data.currentPhone,
+      startedAt: data.startedAt,
+      errorMessage: data.errorMessage
+    }).returning();
+    
+    return job;
+  }
+  
+  async updateBackfillJob(id: number, data: Partial<BackfillJob>): Promise<void> {
+    await db.update(backfillJobs)
+      .set({
+        ...data,
+        updatedAt: new Date()
+      })
+      .where(eq(backfillJobs.id, id));
+  }
+  
+  async getActiveBackfillJob(): Promise<BackfillJob | null> {
+    const [job] = await db.select()
+      .from(backfillJobs)
+      .where(or(
+        eq(backfillJobs.status, 'running'),
+        eq(backfillJobs.status, 'paused')
+      ))
+      .orderBy(desc(backfillJobs.createdAt))
+      .limit(1);
+    
+    return job || null;
+  }
+  
+  async getAccountsWithoutZipCode(limit: number, offset: number): Promise<MemberHistory[]> {
+    const accounts = await db.select()
+      .from(memberHistory)
+      .where(or(
+        eq(memberHistory.zipCode, ''),
+        sql`${memberHistory.zipCode} IS NULL`
+      ))
+      .limit(limit)
+      .offset(offset);
+    
+    return accounts;
+  }
+  
+  async getAccountsWithoutZipCodeCount(): Promise<number> {
+    const result = await db.select({
+      count: sql<number>`count(*)`
+    })
+    .from(memberHistory)
+    .where(or(
+      eq(memberHistory.zipCode, ''),
+      sql`${memberHistory.zipCode} IS NULL`
+    ));
+    
+    return result[0]?.count || 0;
+  }
+  
+  async updateMemberZipAndState(phoneNumber: string, zipCode: string, state: string): Promise<void> {
+    await db.update(memberHistory)
+      .set({
+        zipCode,
+        state
+      })
+      .where(eq(memberHistory.phoneNumber, phoneNumber));
   }
 }
 
