@@ -113,6 +113,29 @@ function loadZipStateMapping() {
 // Initialize mapping on module load
 loadZipStateMapping();
 
+/**
+ * Helper function to convert ZIP code to state abbreviation
+ * @param zipCode - ZIP code string (handles formats like "33185" or "33185-5422")
+ * @returns State abbreviation (e.g., "FL") or empty string if not found
+ */
+export function zipCodeToState(zipCode: string): string {
+  if (!zipCode) {
+    return '';
+  }
+  
+  // Load mapping if not already loaded
+  const mapping = loadZipStateMapping();
+  if (!mapping || !mapping.zipToState) {
+    return '';
+  }
+  
+  // Clean the ZIP code (remove suffix like -9740)
+  const cleanZip = zipCode.toString().split('-')[0].trim();
+  
+  // Return state abbreviation or empty string
+  return mapping.zipToState[cleanZip] || '';
+}
+
 export interface IStorage {
   // Member operations
   getMemberByPhone(phoneNumber: string): Promise<Member | undefined>;
@@ -1133,6 +1156,9 @@ export class DatabaseStorage implements IStorage {
   // Método específico para el fast-scanner que evita errores de límites de campo
   async insertValidMemberForScanner(phoneNumber: string, memberName: string, encLoyaltyId: string, zipCode: string): Promise<void> {
     try {
+      // CRITICAL FIX: Extract state from zipCode using helper function
+      const state = zipCodeToState(zipCode);
+      
       // Use INSERT ... ON CONFLICT para manejar duplicados
       await db.insert(memberHistory)
         .values({
@@ -1141,6 +1167,8 @@ export class DatabaseStorage implements IStorage {
           memberName: memberName.substring(0, 50), // Limitar a 50 caracteres
           currentBalance: 0,
           currentBalanceDollars: "0.00",
+          zipCode: zipCode || null, // CRITICAL: Save to table field
+          state: state || null, // CRITICAL: Save to table field
           lastAccessedAt: new Date(),
           memberData: { scannerDetected: true, fullName: memberName, fullEncId: encLoyaltyId, zipCode: zipCode }
         })
@@ -1149,11 +1177,13 @@ export class DatabaseStorage implements IStorage {
           set: {
             encLoyaltyId: encLoyaltyId.substring(0, 100),
             memberName: memberName.substring(0, 50),
+            zipCode: zipCode || null, // CRITICAL: Update table field
+            state: state || null, // CRITICAL: Update table field
             lastAccessedAt: new Date(),
             memberData: { scannerDetected: true, fullName: memberName, fullEncId: encLoyaltyId, zipCode: zipCode, updated: new Date() }
           }
         });
-      console.log(`✅ Scanner member saved: ${memberName} (${phoneNumber})`);
+      console.log(`✅ Scanner member saved: ${memberName} (${phoneNumber}) - ZIP: ${zipCode}, State: ${state}`);
     } catch (error) {
       console.error(`❌ Scanner member save failed: ${memberName} (${phoneNumber})`, error);
       throw error;
@@ -1164,6 +1194,19 @@ export class DatabaseStorage implements IStorage {
     try {
       // Handle both old format (from getMember) and new format (from background jobs)
       const isNewFormat = memberData?.memberName && memberData?.encLoyaltyId;
+      
+      // CRITICAL FIX: Extract zipCode from multiple possible sources
+      let extractedZipCode = null;
+      if (memberData?.zipCode) {
+        extractedZipCode = memberData.zipCode;
+      } else if (memberData?.Address?.ZipCode) {
+        extractedZipCode = memberData.Address.ZipCode;
+      } else if (memberData?.Address?.zipCode) {
+        extractedZipCode = memberData.Address.zipCode;
+      }
+      
+      // CRITICAL FIX: Calculate state from zipCode
+      const extractedState = extractedZipCode ? zipCodeToState(extractedZipCode) : null;
       
       // Use INSERT ... ON CONFLICT to handle upsert atomically
       const [result] = await db.insert(memberHistory)
@@ -1176,6 +1219,8 @@ export class DatabaseStorage implements IStorage {
           currentBalanceDollars: isNewFormat ? (memberData.currentBalanceDollars?.toString() || "0.00") : (memberData?.Reward?.CurrentBalanceDollars?.toString() || memberData?.currentBalanceDollars?.toString() || "0.00"),
           lastActivityDate: isNewFormat ? memberData.lastActivityDate : (memberData?.Reward?.LastActivityDate || memberData?.lastActivityDate || null),
           emailAddress: isNewFormat ? (memberData.email || null) : (memberData?.Email?.EMailAddress || null),
+          zipCode: extractedZipCode, // CRITICAL: Save to table field
+          state: extractedState, // CRITICAL: Save to table field
           memberData,
         })
         .onConflictDoUpdate({
@@ -1189,6 +1234,8 @@ export class DatabaseStorage implements IStorage {
             emailAddress: isNewFormat ? (memberData.email || null) : (memberData?.Email?.EMailAddress || null),
             memberName: isNewFormat ? memberData.memberName : (memberData?.Name ? `${memberData.Name.FirstName} ${memberData.Name.LastName}` : null),
             cardNumber: isNewFormat ? memberData.cardNumber : (memberData?.CardNumber || null),
+            zipCode: extractedZipCode, // CRITICAL: Update table field
+            state: extractedState, // CRITICAL: Update table field
             lastAccessedAt: new Date(),
           }
         })
@@ -1218,6 +1265,19 @@ export class DatabaseStorage implements IStorage {
       }
       
       console.log(`🔄 PRESERVING MARKED STATUS: Updating balance for ${phoneNumber} while keeping marked status intact`);
+      
+      // CRITICAL FIX: Extract zipCode from multiple possible sources
+      let extractedZipCode = null;
+      if (memberData?.zipCode) {
+        extractedZipCode = memberData.zipCode;
+      } else if (memberData?.Address?.ZipCode) {
+        extractedZipCode = memberData.Address.ZipCode;
+      } else if (memberData?.Address?.zipCode) {
+        extractedZipCode = memberData.Address.zipCode;
+      }
+      
+      // CRITICAL FIX: Calculate state from zipCode
+      const extractedState = extractedZipCode ? zipCodeToState(extractedZipCode) : null;
       
       // Extract last activity date from multiple possible sources
       let lastActivity = null;
@@ -1249,6 +1309,8 @@ export class DatabaseStorage implements IStorage {
           emailAddress: isNewFormat ? (memberData.email || null) : (memberData?.Email?.EMailAddress || null),
           memberName: isNewFormat ? memberData.memberName : (memberData?.Name ? `${memberData.Name.FirstName} ${memberData.Name.LastName}` : null),
           cardNumber: isNewFormat ? memberData.cardNumber : (memberData?.CardNumber || null),
+          zipCode: extractedZipCode, // CRITICAL: Update table field
+          state: extractedState, // CRITICAL: Update table field
           lastAccessedAt: new Date(),
           // CRITICAL: Do NOT update markedAsUsed or markedAsUsedAt - preserve existing values
         })

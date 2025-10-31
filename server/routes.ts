@@ -2466,6 +2466,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/admin/backfill-zip-states - Backfill zipCode and state fields from memberData JSON
+  app.post("/api/admin/backfill-zip-states", async (req, res) => {
+    try {
+      console.log('🔄 Starting ZIP code and state backfill from memberData JSON...');
+      
+      // Import the helper function
+      const { zipCodeToState } = await import('./storage');
+      
+      // Fetch ALL member_history records
+      const allRecords = await db.select().from(memberHistory);
+      console.log(`📊 Found ${allRecords.length} total records to process`);
+      
+      let processedCount = 0;
+      let updatedCount = 0;
+      let errorCount = 0;
+      
+      // Process each record
+      for (const record of allRecords) {
+        processedCount++;
+        
+        try {
+          // Extract zipCode from memberData JSON
+          let extractedZipCode = null;
+          if (record.memberData) {
+            const memberData = record.memberData as any;
+            if (memberData?.zipCode) {
+              extractedZipCode = memberData.zipCode;
+            } else if (memberData?.Address?.ZipCode) {
+              extractedZipCode = memberData.Address.ZipCode;
+            } else if (memberData?.Address?.zipCode) {
+              extractedZipCode = memberData.Address.zipCode;
+            }
+          }
+          
+          // Calculate state from zipCode
+          const extractedState = extractedZipCode ? zipCodeToState(extractedZipCode) : null;
+          
+          // Only update if we have zipCode or state to save
+          if (extractedZipCode || extractedState) {
+            await db.update(memberHistory)
+              .set({
+                zipCode: extractedZipCode,
+                state: extractedState,
+              })
+              .where(eq(memberHistory.phoneNumber, record.phoneNumber));
+            
+            updatedCount++;
+            
+            if (processedCount % 1000 === 0) {
+              console.log(`📊 Progress: ${processedCount}/${allRecords.length} processed, ${updatedCount} updated`);
+            }
+          }
+        } catch (recordError) {
+          errorCount++;
+          console.error(`❌ Error processing record ${record.phoneNumber}:`, recordError);
+        }
+      }
+      
+      console.log(`✅ Backfill complete: ${processedCount} processed, ${updatedCount} updated, ${errorCount} errors`);
+      
+      res.json({
+        success: true,
+        processed: processedCount,
+        updated: updatedCount,
+        errors: errorCount,
+        message: `Backfill complete: ${updatedCount} records updated with ZIP codes and states`
+      });
+    } catch (error) {
+      console.error("Backfill error:", error);
+      res.status(500).json({ 
+        success: false,
+        error: "Failed to backfill ZIP codes and states", 
+        message: (error as Error).message 
+      });
+    }
+  });
+
   // POST /api/member-history/mark-used - Mark a member account as used with API refresh and move to end
   app.post("/api/member-history/mark-used", async (req, res) => {
     try {

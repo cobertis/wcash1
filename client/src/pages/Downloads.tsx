@@ -16,9 +16,6 @@ interface FilterState {
   downloadStatus: "all" | "downloaded" | "not_downloaded";
   zipCode: string;
   state: string;
-  minBalance: string;
-  dateFrom: string;
-  dateTo: string;
 }
 
 interface Account {
@@ -29,6 +26,7 @@ interface Account {
   currentBalanceDollars: string | null;
   emailAddress: string | null;
   zipCode: string | null;
+  state: string | null;
   downloaded: boolean;
   downloadedAt: string | null;
   createdAt: string;
@@ -40,9 +38,6 @@ export default function Downloads() {
     downloadStatus: "all",
     zipCode: "",
     state: "",
-    minBalance: "",
-    dateFrom: "",
-    dateTo: "",
   });
   const [selectedAccounts, setSelectedAccounts] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(1);
@@ -62,15 +57,6 @@ export default function Downloads() {
     }
     if (filters.state) {
       params.append("state", filters.state);
-    }
-    if (filters.minBalance) {
-      params.append("minBalance", filters.minBalance);
-    }
-    if (filters.dateFrom) {
-      params.append("dateFrom", filters.dateFrom);
-    }
-    if (filters.dateTo) {
-      params.append("dateTo", filters.dateTo);
     }
     
     return params.toString();
@@ -334,53 +320,6 @@ export default function Downloads() {
               </Select>
             </div>
 
-            {/* Min Balance */}
-            <div className="space-y-2">
-              <Label htmlFor="minBalance">Balance Mínimo ($)</Label>
-              <Input
-                id="minBalance"
-                type="number"
-                step="0.01"
-                placeholder="Ej: 10.00"
-                value={filters.minBalance}
-                onChange={(e) => {
-                  setFilters({ ...filters, minBalance: e.target.value });
-                  setPage(1);
-                }}
-                data-testid="input-min-balance"
-              />
-            </div>
-
-            {/* Date From */}
-            <div className="space-y-2">
-              <Label htmlFor="dateFrom">Fecha Desde</Label>
-              <Input
-                id="dateFrom"
-                type="date"
-                value={filters.dateFrom}
-                onChange={(e) => {
-                  setFilters({ ...filters, dateFrom: e.target.value });
-                  setPage(1);
-                }}
-                data-testid="input-date-from"
-              />
-            </div>
-
-            {/* Date To */}
-            <div className="space-y-2">
-              <Label htmlFor="dateTo">Fecha Hasta</Label>
-              <Input
-                id="dateTo"
-                type="date"
-                value={filters.dateTo}
-                onChange={(e) => {
-                  setFilters({ ...filters, dateTo: e.target.value });
-                  setPage(1);
-                }}
-                data-testid="input-date-to"
-              />
-            </div>
-
             {/* Clear Filters */}
             <div className="space-y-2 flex items-end">
               <Button
@@ -390,9 +329,6 @@ export default function Downloads() {
                     downloadStatus: "all",
                     zipCode: "",
                     state: "",
-                    minBalance: "",
-                    dateFrom: "",
-                    dateTo: "",
                   });
                   setPage(1);
                 }}
