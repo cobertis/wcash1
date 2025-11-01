@@ -1,4 +1,4 @@
-import { storage } from '../storage';
+import { storage, zipCodeToState } from '../storage';
 import { walgreensAPI } from './walgreens';
 import { db } from '../db';
 import { scanFiles, scanQueue } from '@shared/schema';
@@ -582,7 +582,7 @@ export class ScannerService {
         
         // Extract ZIP code and calculate state
         const zipCode = profile.zipCode || null;
-        const state = zipCode ? (await import('../storage')).zipCodeToState(zipCode) : null;
+        const state = zipCode ? zipCodeToState(zipCode) : null;
         const emailAddress = profile.email || null;
         
         const scanResult: InsertScanResult = {
