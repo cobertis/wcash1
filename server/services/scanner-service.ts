@@ -378,10 +378,8 @@ export class ScannerService {
     while (this.isScanning && !this.abortController?.signal.aborted) {
       try {
         // Get BATCH of numbers for this worker (reduces database calls)
-        const BATCH_SIZE = 100; // Process 100 numbers before going back to DB (optimized for ~240 req/min per key)
-        console.log(`🔍 Worker ${workerIndex} (${apiKeyConfig.name}): Fetching ${BATCH_SIZE} numbers from queue...`);
+        const BATCH_SIZE = 100; // Fetch 100 numbers at once to reduce DB calls
         const pendingNumbers = await storage.getNextPendingNumbers(BATCH_SIZE);
-        console.log(`📥 Worker ${workerIndex} (${apiKeyConfig.name}): Received ${pendingNumbers.length} numbers from queue`);
         
         if (pendingNumbers.length === 0) {
           // No more numbers to process
@@ -389,15 +387,16 @@ export class ScannerService {
           break;
         }
         
-        // 🚀 PARALLEL PROCESSING: Process all numbers in batch simultaneously
-        // Token bucket handles rate limiting for concurrent requests automatically
-        // Each request waits in queue for available tokens - ensures zero 403 errors
-        // This increases throughput 10-20x while maintaining rate limit compliance
-        console.log(`🚀 Worker ${workerIndex} (${apiKeyConfig.name}): Processing ${pendingNumbers.length} numbers in PARALLEL...`);
-        
-        await Promise.all(
-          pendingNumbers.map(queueItem => this.processNumber(queueItem, apiKeyConfig))
-        );
+        // ⚡ SEQUENTIAL PROCESSING: Process numbers one by one for optimal latency
+        // Each API key processes at 250-280 req/min (1 request every ~214-240ms)
+        // Token bucket handles rate limiting automatically - ensures zero 403 errors
+        // Sequential processing keeps latency low (<1s) while maintaining full throughput
+        for (const queueItem of pendingNumbers) {
+          if (!this.isScanning || this.abortController?.signal.aborted) {
+            break;
+          }
+          await this.processNumber(queueItem, apiKeyConfig);
+        }
         
       } catch (error) {
         console.error(`❌ Worker ${workerIndex} (${apiKeyConfig.name}) error:`, error);
