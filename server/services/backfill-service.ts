@@ -111,7 +111,7 @@ export class BackfillService {
     
     // Initialize RateLimiterManager with API keys
     const rateLimiter = RateLimiterManager.getInstance();
-    rateLimiter.initialize(this.apiKeys, 250); // 250 req/min per key
+    rateLimiter.initialize(this.apiKeys, 280); // 280 req/min per key (safe margin from 300 max)
     
     // Create or resume job
     if (!this.currentJob) {
@@ -459,7 +459,7 @@ export class BackfillService {
     
     // Initialize RateLimiterManager with API keys
     const rateLimiter = RateLimiterManager.getInstance();
-    rateLimiter.initialize(this.apiKeys, 250); // 250 req/min per key
+    rateLimiter.initialize(this.apiKeys, 280); // 280 req/min per key (safe margin from 300 max)
     
     // Get accounts without ZIP or state (failed accounts)
     const failedAccounts = await storage.getAccountsWithoutZipOrState();

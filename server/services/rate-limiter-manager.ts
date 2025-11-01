@@ -5,11 +5,11 @@
  * This prevents long pauses and maintains steady throughput.
  * 
  * Design:
- * - 250 requests per minute per API key (safe limit)
+ * - 280 requests per minute per API key (optimized limit, 20 req/min safety margin from 300 max)
  * - Token bucket with 2 token capacity (prevents bursts)
  * - Starts with 0 tokens (anti-burst design)
- * - Refills at 1 token every 240ms (250/min = 1 token per 240ms)
- * - Workers never wait more than 240ms for a token
+ * - Refills at 1 token every 214ms (280/min = 1 token per 214ms)
+ * - Workers never wait more than 214ms for a token
  * - Smooth, continuous flow without 60-second pauses
  * 
  * Benefits vs Fixed Window:
@@ -22,7 +22,7 @@
 interface TokenBucket {
   tokens: number;              // Current available tokens (0-2)
   capacity: number;            // Max tokens (2 to prevent bursts)
-  refillRate: number;          // ms per token (240ms = ~250 req/min)
+  refillRate: number;          // ms per token (214ms = ~280 req/min)
   lastRefill: number;          // Last refill timestamp
 }
 
@@ -33,11 +33,11 @@ class ApiKeyTokenBucket {
   private totalWaitTime = 0;
   private requestCount = 0;
 
-  constructor(keyName: string, requestsPerMinute: number = 250) {
+  constructor(keyName: string, requestsPerMinute: number = 280) {
     this.keyName = keyName;
     
     // Calculate refill rate: 60000ms / requestsPerMinute
-    const refillRate = Math.floor(60000 / requestsPerMinute); // 240ms for 250 req/min
+    const refillRate = Math.floor(60000 / requestsPerMinute); // 214ms for 280 req/min
     
     this.bucket = {
       tokens: 0,              // START WITH ZERO (anti-burst)
@@ -151,7 +151,7 @@ class ApiKeyTokenBucket {
 export class RateLimiterManager {
   private static instance: RateLimiterManager;
   private limiters = new Map<string, ApiKeyTokenBucket>();
-  private maxRequestsPerMinute: number = 250;
+  private maxRequestsPerMinute: number = 280;
 
   private constructor() {}
 
@@ -165,7 +165,7 @@ export class RateLimiterManager {
   /**
    * Initialize rate limiters for all API keys
    */
-  initialize(apiKeys: Array<{ name: string }>, maxRequestsPerMinute: number = 250) {
+  initialize(apiKeys: Array<{ name: string }>, maxRequestsPerMinute: number = 280) {
     this.maxRequestsPerMinute = maxRequestsPerMinute;
     this.limiters.clear();
     for (const key of apiKeys) {
