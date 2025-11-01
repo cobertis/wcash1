@@ -261,9 +261,11 @@ export interface IStorage {
   addNumbersToScanQueue(phoneNumbers: string[], fileId?: number): Promise<{added: number; skipped: number}>;
   getNextPendingNumbers(limit: number): Promise<ScanQueue[]>;
   markNumberAsProcessed(phoneNumber: string, status: 'completed' | 'invalid' | 'error_retryable' | 'error_permanent', result?: any, errorCode?: string, errorMessage?: string, errorIsRetryable?: boolean): Promise<void>;
+  markNumbersAsProcessedBatch(phoneNumbers: string[], results: Array<{phoneNumber: string; status: string; result: any}>): Promise<void>;
   
   // Scanner results operations
   addScanResult(result: InsertScanResult): Promise<void>;
+  addScanResultsBatch(results: InsertScanResult[]): Promise<void>;
   getScanResults(limit?: number, offset?: number): Promise<ScanResult[]>;
   
   // Scanner sessions operations
@@ -806,8 +808,19 @@ export class MemStorage implements IStorage {
     // Stub implementation
   }
   
+  async markNumbersAsProcessedBatch(
+    phoneNumbers: string[], 
+    results: Array<{phoneNumber: string; status: string; result: any}>
+  ): Promise<void> {
+    // Stub implementation
+  }
+  
   // Scanner results operations stubs
   async addScanResult(result: InsertScanResult): Promise<void> {
+    // Stub implementation
+  }
+  
+  async addScanResultsBatch(results: InsertScanResult[]): Promise<void> {
     // Stub implementation
   }
   async getScanResults(limit?: number, offset?: number): Promise<ScanResult[]> {
@@ -2070,6 +2083,102 @@ export class DatabaseStorage implements IStorage {
       console.log(`✅ Saved scan result for ${result.phoneNumber} (balance: $${result.currentBalanceDollars}, zip: ${zipCode}, state: ${state})`);
     } catch (error) {
       console.error(`❌ Error saving scan result for ${result.phoneNumber}:`, error);
+    }
+  }
+  
+  async addScanResultsBatch(results: InsertScanResult[]): Promise<void> {
+    if (results.length === 0) return;
+    
+    try {
+      // Use transaction for batch insert
+      await db.transaction(async (tx) => {
+        // Batch insert to scan_results
+        for (const result of results) {
+          const zipCode = result.zipCode || null;
+          const state = zipCode ? zipCodeToState(zipCode) : null;
+          
+          await tx.insert(scanResults)
+            .values(result)
+            .onConflictDoUpdate({
+              target: scanResults.phoneNumber,
+              set: {
+                memberName: result.memberName,
+                encLoyaltyId: result.encLoyaltyId,
+                currentBalance: result.currentBalance,
+                currentBalanceDollars: result.currentBalanceDollars,
+                lastActivityDate: result.lastActivityDate,
+                zipCode: result.zipCode,
+                state: state,
+                emailAddress: result.emailAddress,
+                fileId: result.fileId,
+                sessionId: result.sessionId,
+                scannedAt: new Date()
+              }
+            });
+          
+          // Also save to member_history
+          await tx.insert(memberHistory)
+            .values({
+              phoneNumber: result.phoneNumber,
+              memberName: result.memberName || 'Unknown',
+              encLoyaltyId: result.encLoyaltyId || '',
+              currentBalance: result.currentBalance || 0,
+              currentBalanceDollars: result.currentBalanceDollars || 0,
+              lastActivityDate: result.lastActivityDate || null,
+              zipCode: zipCode,
+              state: state,
+              emailAddress: result.emailAddress || null,
+              isMarked: false,
+              markedAt: null
+            })
+            .onConflictDoUpdate({
+              target: memberHistory.phoneNumber,
+              set: {
+                memberName: result.memberName || 'Unknown',
+                encLoyaltyId: result.encLoyaltyId || '',
+                currentBalance: result.currentBalance || 0,
+                currentBalanceDollars: result.currentBalanceDollars || 0,
+                lastActivityDate: result.lastActivityDate || null,
+                zipCode: zipCode,
+                state: state,
+                emailAddress: result.emailAddress || null,
+                updatedAt: new Date()
+              }
+            });
+        }
+      });
+      
+      console.log(`✅ Batch saved ${results.length} scan results`);
+    } catch (error) {
+      console.error(`❌ Error batch saving scan results:`, error);
+      throw error;
+    }
+  }
+  
+  async markNumbersAsProcessedBatch(
+    phoneNumbers: string[], 
+    results: Array<{phoneNumber: string; status: string; result: any}>
+  ): Promise<void> {
+    if (phoneNumbers.length === 0) return;
+    
+    try {
+      // Use Promise.all for parallel batch updates (much faster than serial)
+      await Promise.all(results.map(result => 
+        db.update(scanQueue)
+          .set({
+            status: result.status as any,
+            processedAt: new Date(),
+            attempts: sql`${scanQueue.attempts} + 1`,
+            lastAttemptAt: new Date(),
+            lastStatusChangeAt: new Date()
+          })
+          .where(eq(scanQueue.phoneNumber, result.phoneNumber))
+      ));
+      
+      console.log(`✅ Batch marked ${phoneNumbers.length} numbers as processed`);
+    } catch (error) {
+      console.error(`❌ Error batch marking numbers as processed:`, error);
+      throw error;
     }
   }
   
