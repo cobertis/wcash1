@@ -344,13 +344,14 @@ export class ScannerService {
     console.log('🔄 Scanner loop started with Worker Pool architecture');
     
     const activeKeys = this.apiKeys.filter(k => k.isActive);
-    const WORKERS_COUNT = activeKeys.length; // 1 worker per API key
+    const WORKERS_COUNT = 30; // FIXED: 30 concurrent workers for maximum throughput
     
-    console.log(`🔧 Starting ${WORKERS_COUNT} workers (1 per API key)`);
+    console.log(`🚀 Starting ${WORKERS_COUNT} workers with ${activeKeys.length} API keys (round-robin)`);
     
-    // Create worker promises - each worker processes numbers sequentially with its assigned key
-    const workers = activeKeys.map((apiKeyConfig, workerIndex) => {
-      return this.worker(workerIndex, apiKeyConfig);
+    // Create worker promises - each worker processes numbers in parallel
+    // Workers dynamically pick API keys based on token availability
+    const workers = Array.from({ length: WORKERS_COUNT }, (_, workerIndex) => {
+      return this.parallelWorker(workerIndex);
     });
     
     // Wait for all workers to complete
@@ -360,63 +361,50 @@ export class ScannerService {
   }
 
   /**
-   * Worker function - processes numbers sequentially using ONE API key
-   * This prevents multiple workers from using the same key simultaneously
+   * PARALLEL Worker - processes numbers continuously with dynamic API key selection
+   * Multiple workers can use the same API key pool via round-robin + token bucket
    */
-  private async worker(
-    workerIndex: number, 
-    apiKeyConfig: { name: string; apiKey: string; affId: string }
-  ): Promise<void> {
-    // CRITICAL: Universal 2s delay + staggered startup
-    // Token bucket starts with 0 tokens and refills at 1.67 tokens/sec
-    // ALL workers wait 2s base delay to let tokens accumulate (prevents Worker 0 burst)
-    // Then add 500ms * workerIndex for smooth staggered distribution
-    const baseDelay = 2000; // 2s for ALL workers (even Worker 0)
-    const staggerDelay = workerIndex * 500; // Additional stagger between workers
-    const totalDelay = baseDelay + staggerDelay;
+  private async parallelWorker(workerIndex: number): Promise<void> {
+    // Stagger worker startup to prevent burst
+    const staggerDelay = workerIndex * 100; // 100ms stagger per worker
+    await new Promise(resolve => setTimeout(resolve, staggerDelay));
     
-    await new Promise(resolve => setTimeout(resolve, totalDelay));
+    console.log(`🚀 Worker ${workerIndex} started (parallel mode)`);
     
-    console.log(`👷 Worker ${workerIndex} started with key: ${apiKeyConfig.name}`);
+    // Initialize buffer for this worker
+    if (!this.resultBuffers.has(workerIndex)) {
+      this.resultBuffers.set(workerIndex, []);
+    }
     
     while (this.isScanning && !this.abortController?.signal.aborted) {
       try {
-        // Get BATCH of numbers for this worker (reduces database calls)
-        const BATCH_SIZE = 200; // Fetch 200 numbers at once to reduce DB calls (2x optimization)
-        const pendingNumbers = await storage.getNextPendingNumbers(BATCH_SIZE);
+        // Get next number to process
+        const pendingNumbers = await storage.getNextPendingNumbers(1);
         
         if (pendingNumbers.length === 0) {
           // No more numbers to process
-          console.log(`👷 Worker ${workerIndex} (${apiKeyConfig.name}): No more pending numbers`);
+          console.log(`✅ Worker ${workerIndex}: Queue empty, exiting`);
           break;
         }
         
-        // ⚡ SEQUENTIAL PROCESSING: Process numbers one by one for optimal latency
-        // Each API key processes at 250 req/min (1 request every ~240ms)
-        // Token bucket handles rate limiting automatically - ensures zero 403 errors
-        // Sequential processing keeps latency low (<1s) while maintaining full throughput
-        // BATCH SAVING: Results are buffered and saved in batches of 50 for 10x DB speed
+        const queueItem = pendingNumbers[0];
         
-        // Initialize buffer for this worker
-        if (!this.resultBuffers.has(workerIndex)) {
-          this.resultBuffers.set(workerIndex, []);
+        // Get next API key dynamically (round-robin)
+        const apiKeyConfig = this.getNextApiKey();
+        
+        // Process the number (token bucket handles rate limiting)
+        await this.processNumber(queueItem, apiKeyConfig, workerIndex);
+        
+        // Flush buffer if it reaches the batch size
+        const buffer = this.resultBuffers.get(workerIndex);
+        if (buffer && buffer.length >= ScannerService.BATCH_SAVE_SIZE) {
+          await this.flushResultBuffer(workerIndex);
         }
-        
-        for (const queueItem of pendingNumbers) {
-          if (!this.isScanning || this.abortController?.signal.aborted) {
-            break;
-          }
-          await this.processNumber(queueItem, apiKeyConfig, workerIndex);
-        }
-        
-        // Flush any remaining results in buffer after processing batch
-        await this.flushResultBuffer(workerIndex);
         
       } catch (error) {
-        console.error(`❌ Worker ${workerIndex} (${apiKeyConfig.name}) error:`, error);
+        console.error(`❌ Worker ${workerIndex} error:`, error);
         this.errorCount++;
         
-        // Don't stop worker on individual errors, continue processing
         if (this.errorCount > 100) {
           console.error(`❌ Worker ${workerIndex}: Too many global errors, stopping`);
           break;
@@ -427,7 +415,7 @@ export class ScannerService {
     // Final flush of any remaining results before stopping
     await this.flushResultBuffer(workerIndex);
     
-    console.log(`👷 Worker ${workerIndex} (${apiKeyConfig.name}) stopped`);
+    console.log(`✅ Worker ${workerIndex} stopped (processed until queue empty)`);
   }
 
   /**
