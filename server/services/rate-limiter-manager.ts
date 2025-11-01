@@ -32,6 +32,10 @@ class ApiKeyTokenBucket {
   private totalRequests = 0;
   private totalWaitTime = 0;
   private requestCount = 0;
+  
+  // Real-time tracking for requests per minute
+  private requestTimestamps: number[] = [];
+  private lastMinuteReport = Date.now();
 
   constructor(keyName: string, requestsPerMinute: number = 250) {
     this.keyName = keyName;
@@ -93,13 +97,23 @@ class ApiKeyTokenBucket {
         this.totalRequests++;
         this.requestCount++;
         
-        const waitTime = Date.now() - startTime;
+        const now = Date.now();
+        const waitTime = now - startTime;
         this.totalWaitTime += waitTime;
         
-        // Log every 50 requests to track performance
-        if (this.requestCount % 50 === 0) {
+        // Track timestamp for req/min calculation
+        this.requestTimestamps.push(now);
+        
+        // Clean up old timestamps (older than 60 seconds)
+        const oneMinuteAgo = now - 60000;
+        this.requestTimestamps = this.requestTimestamps.filter(ts => ts > oneMinuteAgo);
+        
+        // Report real req/min every 60 seconds
+        if (now - this.lastMinuteReport >= 60000) {
+          const actualReqPerMin = this.requestTimestamps.length;
           const avgWait = Math.round(this.totalWaitTime / this.requestCount);
-          console.log(`🔑 ${this.keyName}: ${this.requestCount} requests, avg wait: ${avgWait}ms, tokens: ${this.bucket.tokens.toFixed(2)}`);
+          console.log(`📊 ${this.keyName}: ${actualReqPerMin} req/min (actual), avg wait: ${avgWait}ms`);
+          this.lastMinuteReport = now;
         }
         
         return;
@@ -114,6 +128,16 @@ class ApiKeyTokenBucket {
       const waitMs = Math.max(10, timeUntilNextToken + 10);
       await new Promise(resolve => setTimeout(resolve, waitMs));
     }
+  }
+
+  /**
+   * Get actual requests per minute (last 60 seconds)
+   */
+  getActualReqPerMin(): number {
+    const now = Date.now();
+    const oneMinuteAgo = now - 60000;
+    this.requestTimestamps = this.requestTimestamps.filter(ts => ts > oneMinuteAgo);
+    return this.requestTimestamps.length;
   }
 
   /**
@@ -221,6 +245,32 @@ export class RateLimiterManager {
       throw new Error(`Rate limiter not found for key: ${keyName}`);
     }
     return limiter.getStats();
+  }
+
+  /**
+   * Get actual requests per minute across all keys
+   */
+  getTotalActualReqPerMin(): number {
+    let total = 0;
+    for (const limiter of Array.from(this.limiters.values())) {
+      total += limiter.getActualReqPerMin();
+    }
+    return total;
+  }
+
+  /**
+   * Get detailed breakdown of actual req/min per key
+   */
+  getActualReqPerMinBreakdown(): { keyName: string; reqPerMin: number }[] {
+    const breakdown: { keyName: string; reqPerMin: number }[] = [];
+    for (const limiter of Array.from(this.limiters.values())) {
+      const stats = limiter.getStats();
+      breakdown.push({
+        keyName: stats.keyName,
+        reqPerMin: limiter.getActualReqPerMin()
+      });
+    }
+    return breakdown;
   }
 
   /**

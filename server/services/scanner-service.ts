@@ -794,9 +794,13 @@ export class ScannerService {
    * Start progress updater
    */
   private startProgressUpdater(): void {
+    let intervalCount = 0;
+    
     // Update progress every 5 seconds
     this.progressUpdateInterval = setInterval(async () => {
       if (!this.isScanning || !this.currentSession) return;
+      
+      intervalCount++;
       
       try {
         // Emit progress via WebSocket
@@ -817,8 +821,23 @@ export class ScannerService {
         // Log progress
         console.log(`📊 Progress: ${this.processedCount} scanned, ${this.validCount} valid, ${this.invalidCount} invalid, ${rate} req/s`);
         
+        // Report actual req/min metrics every 60 seconds (every 12th iteration at 5s intervals)
+        if (intervalCount % 12 === 0) {
+          const rateLimiter = RateLimiterManager.getInstance();
+          const totalReqPerMin = rateLimiter.getTotalActualReqPerMin();
+          const breakdown = rateLimiter.getActualReqPerMinBreakdown();
+          
+          console.log(`\n📊 ===== REAL THROUGHPUT METRICS (Last 60 seconds) =====`);
+          console.log(`📊 TOTAL: ${totalReqPerMin} req/min across all ${breakdown.length} API keys`);
+          console.log(`📊 Per-key breakdown:`);
+          for (const item of breakdown) {
+            console.log(`   ${item.keyName}: ${item.reqPerMin} req/min`);
+          }
+          console.log(`📊 ====================================================\n`);
+        }
+        
         // Log Token Bucket stats every 30 seconds (every 6th iteration)
-        if (this.processedCount % 6 === 0) {
+        if (intervalCount % 6 === 0) {
           const rateLimiter = RateLimiterManager.getInstance();
           const bucketStats = rateLimiter.getAllStats();
           console.log(`🪣 Token Bucket Stats:`);
